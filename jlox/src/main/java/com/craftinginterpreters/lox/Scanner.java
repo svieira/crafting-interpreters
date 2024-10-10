@@ -75,7 +75,26 @@ class Scanner {
           while (peek() != '\n' && !isAtEnd()) advance();
           addToken(COMMENT);
         } else if (match('*')) {
-          while (!(match('*') && match('/')) && !isAtEnd()) advance();
+          var blockCommentBeginningLineNumber = current;
+          var blockCommentDepth = 1;
+          while (blockCommentDepth > 0) {
+            if (isAtEnd()) {
+              Lox.error(blockCommentBeginningLineNumber, "Unclosed block comment detected");
+              break;
+            }
+            switch (advance()) {
+              case '*' -> {
+                if (match('/')) {
+                  blockCommentDepth -= 1;
+                }
+              }
+              case '/' -> {
+                if (match('*')) {
+                  blockCommentDepth += 1;
+                }
+              }
+            }
+          }
           addToken(COMMENT);
         } else {
           addToken(SLASH);
