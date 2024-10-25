@@ -6,12 +6,18 @@ import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 public class Lox {
-  public static final Interpreter INTERPRETER = new Interpreter();
+  static final Interpreter INTERPRETER = new Interpreter();
   static boolean hadError = false;
   private static boolean hadRuntimeError = false;
+  private static final Pattern DIRECTIVE = Pattern.compile("^(?<directive>:\\w+)");
+
+  private enum Mode { TOKENS, PARSE_TREE, EVALUATE; }
 
   public static void main(String[] args) throws IOException {
     if (args.length > 1) {
@@ -26,7 +32,7 @@ public class Lox {
 
   private static void runFile(String path) throws IOException {
     byte[] bytes = Files.readAllBytes(Paths.get(path));
-    run(new String(bytes, Charset.defaultCharset()));
+    run(new String(bytes, Charset.defaultCharset()), EnumSet.of(Mode.EVALUATE));
     // Indicate an error in the exit code.
     if (hadError) System.exit(65);
     if (hadRuntimeError) System.exit(70);
@@ -36,40 +42,82 @@ public class Lox {
     InputStreamReader input = new InputStreamReader(System.in);
     BufferedReader reader = new BufferedReader(input);
 
+    String lastLine = "";
+    Set<Mode> lastModes = EnumSet.noneOf(Mode.class);
     while (true) {
       System.out.print("> ");
       String line = reader.readLine();
-      if (line == null) break;
-      run(line);
+      if (line == null || line.isBlank() || line.trim().equals(":exit")) break;
+      var lineAndModes = directive(line, lastLine, lastModes);
+      lastLine = lineAndModes.line == lastLine ? lastLine : lineAndModes.line;
+      lastModes = lineAndModes.modes == lastModes ? lastModes : lineAndModes.modes;
+      run(lineAndModes.line, lineAndModes.modes);
       hadError = false;
     }
   }
 
-  private static void run(String source) {
+  private static void run(String source, Set<Mode> modes) {
     Scanner scanner = new Scanner(source);
     List<Token> tokens = scanner.scanTokens();
-
-    System.out.println("Tokens:");
-    // For now, just print the tokens.
-    for (Token token: tokens) {
-      System.out.println(token);
+    if (modes.contains(Mode.TOKENS)) {
+      for (Token token: tokens) {
+        System.out.println(token);
+      }
     }
 
-    System.out.println("\n\nAST:");
     Parser parser = new Parser(tokens);
     ParseResult parse = parser.parse();
+
+    if (modes.contains(Mode.PARSE_TREE) && modes.contains(Mode.TOKENS)) {
+      System.out.println("\n\n");
+    }
+
     switch (parse) {
       case Expr expression -> {
-        System.out.println(expression.accept(new AstPrinter()));
-        try {
-          var result = expression.accept(INTERPRETER);
-          System.out.println(" --[evals to]--> " + Interpreter.stringify(result));
-        } catch (EvaluationError e) {
-          Lox.runtimeError(e);
+        if (modes.contains(Mode.PARSE_TREE)) {
+          System.out.println(expression.accept(new AstPrinter()));
+        }
+        if (modes.contains(Mode.EVALUATE)) {
+          try {
+            var result = expression.accept(INTERPRETER);
+            if (modes.size() > 1) {
+              System.out.print("\n\n--[evaluates to]--> ");
+            }
+            System.out.println(Interpreter.stringify(result));
+          } catch (EvaluationError e) {
+            Lox.runtimeError(e);
+          }
         }
       }
       case ParseError e -> System.err.println("Failed to parse at " + e.token() + " due to " + e.message());
     }
+  }
+
+  private record LineAndModes(String line, Set<Mode> modes){}
+  private static LineAndModes directive(String line, String lastLine, Set<Mode> lastModes) {
+    var match = DIRECTIVE.matcher(line);
+    if (!match.find()) {
+      return new LineAndModes(line, lastModes);
+    }
+
+    String directive = match.group("directive");
+
+    var modes = switch (directive) {
+      case ":lex", ":tokens" -> EnumSet.of(Mode.TOKENS);
+      case ":ast", ":tree", ":parse" -> EnumSet.of(Mode.PARSE_TREE);
+      case ":eval" -> EnumSet.of(Mode.EVALUATE);
+      case ":all" -> EnumSet.allOf(Mode.class);
+      default -> throw new EvaluationError(
+              new Token(TokenType.INVALID, null, null, 0, 0),
+              "Unknown directive " + directive
+      );
+    };
+
+    var evalLine = line.trim().equals(directive)
+            ? lastLine
+            : line.replaceFirst(directive, "");
+
+    return new LineAndModes(evalLine, modes);
   }
 
   static void error(int line, int column, String message) {
