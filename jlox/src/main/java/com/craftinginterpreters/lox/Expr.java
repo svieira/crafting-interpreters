@@ -18,7 +18,7 @@ package com.craftinginterpreters.lox;
  *                | "(" expression ")" ;
  * </code></pre>
  */
-interface Expr {
+non-sealed interface Expr extends ParseResult {
   interface Visitor<R> {
     R visit(Trinary trinary);
     R visit(Binary binary);

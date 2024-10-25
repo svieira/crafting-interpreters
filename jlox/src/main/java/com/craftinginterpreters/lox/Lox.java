@@ -54,29 +54,27 @@ public class Lox {
 
     System.out.println("\n\nAST:");
     Parser parser = new Parser(tokens);
-    Expr expression = parser.parse();
-
-    // Stop if there was a syntax error.
-    if (hadError) return;
-
-    System.out.println(new AstPrinter().print(expression));
-
+    ParseResult result = parser.parse();
+    switch (result) {
+      case Expr expression -> System.out.println(new AstPrinter().print(expression));
+      case ParseError e -> System.err.println("Failed to parse at " + e.token() + " due to " + e.message());
+    }
   }
 
-  static void error(int line, String message) {
-    report(line, "", message);
+  static void error(int line, int column, String message) {
+    report(line, column, "", message);
   }
 
   static void error(Token token, String message) {
     if (token.type() == TokenType.EOF) {
-      report(token.line(), " at end", message);
+      report(token.line(), token.column()," at end", message);
     } else {
-      report(token.line(), " at '" + token.lexeme() + "'", message);
+      report(token.line(), token.column(), " at '" + token.lexeme() + "'", message);
     }
   }
 
-  private static void report(int line, String where, String message) {
-    System.err.println("[line " + line + "] Error" + where + ": " + message);
+  private static void report(int line, int column, String where, String message) {
+    System.err.println("[line " + line + "][column " + column + "] Error" + where + ": " + message);
     hadError = true;
   }
 }

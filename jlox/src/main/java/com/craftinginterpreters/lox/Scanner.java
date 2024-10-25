@@ -32,6 +32,7 @@ class Scanner {
   private int start = 0;
   private int current = 0;
   private int line = 1;
+  private int column = 0;
 
   Scanner(String source) {
     this.source = source;
@@ -44,7 +45,7 @@ class Scanner {
       scanToken();
     }
 
-    tokens.add(new Token(EOF, "", null, line));
+    tokens.add(new Token(EOF, "", null, line, column));
     return tokens;
   }
 
@@ -80,11 +81,12 @@ class Scanner {
           while (peek() != '\n' && !isAtEnd()) advance();
           addToken(COMMENT);
         } else if (match('*')) {
-          var blockCommentBeginningLineNumber = current;
+          var blockCommentBeginningLineNumber = line;
+          var blockCommentBeginningColumnNumber = column;
           var blockCommentDepth = 1;
           while (blockCommentDepth > 0) {
             if (isAtEnd()) {
-              Lox.error(blockCommentBeginningLineNumber, "Unclosed block comment detected");
+              Lox.error(blockCommentBeginningLineNumber, blockCommentBeginningColumnNumber, "Unclosed block comment detected");
               break;
             }
             switch (advance()) {
@@ -106,7 +108,7 @@ class Scanner {
         }
       }
       case ' ', '\r', '\t' -> { /* deliberately ignored - this is an AST not a CST. */ }
-      case '\n' -> line++;
+      case '\n' -> onNewLine();
       case '"' -> string();
       default -> {
         if (isDigit(c)) {
@@ -114,10 +116,16 @@ class Scanner {
         } else if (isAlpha(c)) {
           identifier();
         } else {
-          Lox.error(line, "Unexpected character.");
+          addToken(INVALID, c);
+          Lox.error(line, column, "Unexpected character.");
         }
       }
     }
+  }
+
+  private int onNewLine() {
+    column = 0;
+    return line++;
   }
 
   private void identifier() {
@@ -142,13 +150,15 @@ class Scanner {
   }
 
   private void string() {
+    var stringStartLine = line;
+    var stringStartColumn = column;
     while (peek() != '"' && !isAtEnd()) {
-      if (peek() == '\n') line++;
+      if (peek() == '\n') onNewLine();
       advance();
     }
 
     if (isAtEnd()) {
-      Lox.error(line, "Unterminated string.");
+      Lox.error(stringStartLine, stringStartColumn, "Unterminated string.");
       return;
     }
 
@@ -174,6 +184,7 @@ class Scanner {
   }
 
   private char advance() {
+    column += 1;
     return source.charAt(current++);
   }
 
@@ -207,6 +218,6 @@ class Scanner {
 
   private void addToken(TokenType type, Object literal) {
     String text = source.substring(start, current);
-    tokens.add(new Token(type, text, literal, line));
+    tokens.add(new Token(type, text, literal, line, column));
   }
 }

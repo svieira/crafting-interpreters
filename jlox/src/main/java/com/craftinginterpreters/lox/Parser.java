@@ -6,7 +6,10 @@ import java.util.function.Supplier;
 import static com.craftinginterpreters.lox.TokenType.*;
 
 class Parser {
-  private static class ParseError extends RuntimeException {}
+
+  private static final TokenType[] EMPTY_TYPES = new TokenType[0];
+  private static final TokenType[] UNAMBIGUOUS_TERM_TOKENS = { PLUS };
+  private static final TokenType[] AMBIGUOUS_TERM_TOKENS = { MINUS };
 
   private final List<Token> tokens;
   private int current = 0;
@@ -15,20 +18,15 @@ class Parser {
     this.tokens = tokens;
   }
 
-  public static void main(String... args) {
-    var tokens = new Scanner("1 ? 2 ? 3 : 4 : 5").scanTokens();
-    var results = new Parser(tokens).parse();
-    if (results != null) {
-      var repr = results.accept(new AstPrinter());
-      System.out.println(repr);
-    }
-  }
-
-  Expr parse() {
+  ParseResult parse() {
     try {
-      return expression();
+      var expression = expression();
+      if (!isAtEnd()) {
+        return new ParseError(peek(), "Failed to finish parsing");
+      }
+      return expression;
     } catch (ParseError error) {
-      return null;
+      return error;
     }
   }
 
@@ -41,6 +39,17 @@ class Parser {
   }
 
   private Expr ternary() {
+    if (match(QUESTION_MARK, ELVIS)) {
+      // Error: Leading ternary operator
+      var operator = previous();
+      var _right = ternary(); // Go ahead and attempt to recover
+      throw error(operator, "Ternary operator missing test condition");
+    } else if (match(COLON)) {
+      // Error: Leading ternary operator
+      var operator = previous();
+      var _right = ternary(); // Go ahead and attempt to recover
+      throw error(operator, "Unexpected " + COLON + ". Are you missing a " + QUESTION_MARK + "?");
+    }
     var expr = equality();
     while (match(QUESTION_MARK, ELVIS)) {
       var firstOp = previous();
@@ -67,7 +76,7 @@ class Parser {
   }
 
   private Expr term() {
-    return binaryOp(this::factor, PLUS, MINUS);
+    return binaryOp(this::factor, UNAMBIGUOUS_TERM_TOKENS, AMBIGUOUS_TERM_TOKENS);
   }
 
   private Expr factor() {
@@ -100,6 +109,7 @@ class Parser {
         yield new Expr.Grouping(group);
       }
       case IDENTIFIER -> new Expr.Literal(token.lexeme());
+      case EOF -> throw error(token, "Unexpected end of file");
       default -> {
         throw error(token, "Unable to handle token of type " + token.type());
       }
@@ -108,8 +118,19 @@ class Parser {
 
   /** Parse a left-associative binary operation */
   private Expr binaryOp(Supplier<Expr> target, TokenType... opTokens) {
+    return binaryOp(target, opTokens, EMPTY_TYPES);
+  }
+
+  /** Parse a left-associative binary operator where some of the operators are also unary operators */
+  private Expr binaryOp(Supplier<Expr> target, TokenType[] unambiguousTokens, TokenType[] ambiguousTokens) {
+    if (match(unambiguousTokens)) {
+      // Error: Leading binary operator
+      var operator = previous();
+      var _right = target.get(); // Go ahead and attempt to recover
+      throw error(operator, "Binary operator missing left-hand side");
+    }
     var expr = target.get();
-    while (match(opTokens)) {
+    while (match(unambiguousTokens) || match(ambiguousTokens)) {
       Token operator = previous();
       Expr right = target.get();
       expr = new Expr.Binary(expr, operator, right);
@@ -158,7 +179,7 @@ class Parser {
 
   private ParseError error(Token token, String message) {
     Lox.error(token, message);
-    return new ParseError();
+    return new ParseError(token, message);
   }
 
   private void synchronize() {
