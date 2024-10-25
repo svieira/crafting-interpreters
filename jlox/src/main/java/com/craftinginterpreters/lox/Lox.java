@@ -9,7 +9,9 @@ import java.nio.file.Paths;
 import java.util.List;
 
 public class Lox {
+  public static final Interpreter INTERPRETER = new Interpreter();
   static boolean hadError = false;
+  private static boolean hadRuntimeError = false;
 
   public static void main(String[] args) throws IOException {
     if (args.length > 1) {
@@ -27,6 +29,7 @@ public class Lox {
     run(new String(bytes, Charset.defaultCharset()));
     // Indicate an error in the exit code.
     if (hadError) System.exit(65);
+    if (hadRuntimeError) System.exit(70);
   }
 
   private static void runPrompt() throws IOException {
@@ -54,9 +57,17 @@ public class Lox {
 
     System.out.println("\n\nAST:");
     Parser parser = new Parser(tokens);
-    ParseResult result = parser.parse();
-    switch (result) {
-      case Expr expression -> System.out.println(new AstPrinter().print(expression));
+    ParseResult parse = parser.parse();
+    switch (parse) {
+      case Expr expression -> {
+        System.out.println(expression.accept(new AstPrinter()));
+        try {
+          var result = expression.accept(INTERPRETER);
+          System.out.println(" --[evals to]--> " + Interpreter.stringify(result));
+        } catch (EvaluationError e) {
+          Lox.runtimeError(e);
+        }
+      }
       case ParseError e -> System.err.println("Failed to parse at " + e.token() + " due to " + e.message());
     }
   }
@@ -71,6 +82,12 @@ public class Lox {
     } else {
       report(token.line(), token.column(), " at '" + token.lexeme() + "'", message);
     }
+  }
+
+  static void runtimeError(EvaluationError error) {
+    System.err.println(error.getMessage() +
+            "\n[" + error.getToken().line() + ":" + error.getToken().column() + "]");
+    hadRuntimeError = true;
   }
 
   private static void report(int line, int column, String where, String message) {
