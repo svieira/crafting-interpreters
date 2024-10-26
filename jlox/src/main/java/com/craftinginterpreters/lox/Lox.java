@@ -43,9 +43,9 @@ public class Lox {
     BufferedReader reader = new BufferedReader(input);
 
     String lastLine = "";
-    Set<Mode> lastModes = EnumSet.noneOf(Mode.class);
+    Set<Mode> lastModes = EnumSet.of(Mode.EVALUATE);
     while (true) {
-      System.out.print("> ");
+      prompt(lastModes);
       String line = reader.readLine();
       if (line == null || line.isBlank() || line.trim().equals(":exit")) break;
       var lineAndModes = directive(line, lastLine, lastModes);
@@ -54,6 +54,19 @@ public class Lox {
       run(lineAndModes.line, lineAndModes.modes);
       hadError = false;
     }
+  }
+
+  private static void prompt(Set<Mode> lastModes) {
+    var modes = new StringBuilder();
+    for (var mode : lastModes) {
+      modes.append(switch (mode) {
+        case EVALUATE -> ":eval";
+        case PARSE_TREE -> ":ast";
+        case TOKENS -> ":lex";
+      });
+    }
+    var modals = modes.toString();
+    System.out.print((modals.equals(":eval") ? "" : modals) + "> ");
   }
 
   private static void run(String source, Set<Mode> modes) {
