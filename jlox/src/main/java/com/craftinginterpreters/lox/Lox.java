@@ -24,6 +24,7 @@ public class Lox {
       System.out.println("Usage: jlox [script]");
       System.exit(64);
     } else if (args.length == 1) {
+      System.out.println("Running file " + args[0]);
       runFile(args[0]);
     } else {
       runPrompt();
@@ -31,7 +32,7 @@ public class Lox {
   }
 
   private static void runFile(String path) throws IOException {
-    byte[] bytes = Files.readAllBytes(Paths.get(path));
+    byte[] bytes = "-".equals(path.trim()) ? System.in.readAllBytes() : Files.readAllBytes(Paths.get(path));
     run(new String(bytes, Charset.defaultCharset()), EnumSet.of(Mode.EVALUATE));
     // Indicate an error in the exit code.
     if (hadError) System.exit(65);
@@ -87,22 +88,32 @@ public class Lox {
 
     switch (parse) {
       case Expr expression -> {
-        if (modes.contains(Mode.PARSE_TREE)) {
-          System.out.println(expression.accept(new AstPrinter()));
+        expression.accept(new AstPrinter());
+        if (modes.size() > 1) {
+          System.out.print("\n\n--[evaluates to]--> ");
         }
-        if (modes.contains(Mode.EVALUATE)) {
-          try {
-            var result = expression.accept(INTERPRETER);
-            if (modes.size() > 1) {
-              System.out.print("\n\n--[evaluates to]--> ");
-            }
-            System.out.println(Interpreter.stringify(result));
-          } catch (EvaluationError e) {
-            Lox.runtimeError(e);
-          }
+        try {
+          var result = expression.accept(INTERPRETER);
+          System.out.println(Interpreter.stringify(result));
+        } catch (EvaluationError e) {
+          Lox.runtimeError(e);
         }
       }
-      case ParseError e -> System.err.println("Failed to parse at " + e.token() + " due to " + e.message());
+      case Program program -> {
+        if (modes.contains(Mode.PARSE_TREE)) {
+          program.accept(new AstPrinter()).forEach(System.out::println);
+        }
+        if (modes.contains(Mode.EVALUATE)) {
+          INTERPRETER.interpret(program, Lox::runtimeError);
+        }
+      }
+      case ParseError e -> {
+        error(e.token(), e.message());
+        if (e.statementParseException() != null) {
+          System.err.println("Additionally, failed to parse as a statement");
+          error(e.statementParseException().token(), e.statementParseException().message());
+        }
+      }
     }
   }
 

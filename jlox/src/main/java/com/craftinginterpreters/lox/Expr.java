@@ -1,10 +1,11 @@
 package com.craftinginterpreters.lox;
 
 /**
- * The AST for the following Lox grammar
-
+ * <p>The AST for the expression portion of the Lox grammar:</p>
  * <pre><code>
- * expression     → discarded ;
+ * expression     → assignment ;
+ * assignment     → IDENTIFIER "=" assignment
+ *                | discarded ;
  * discarded      → ternary ( "," ternary )* ;
  * ternary        → equality (( "?" ternary ":" ternary ) | "?:" ternary )* ;
  * equality       → comparison ( ( "!=" | "==" ) comparison )* ;
@@ -15,8 +16,11 @@ package com.craftinginterpreters.lox;
  *                | coalesce ;
  * coalesce       → primary ( "??" primary )* ;
  * primary        → NUMBER | STRING | "true" | "false" | "nil"
- *                | "(" expression ")" ;
+ *                | "(" expression ")"
+ *                | IDENTIFIER ;
  * </code></pre>
+
+ * {@link Stmt see also <code>Stmt</code>}
  */
 non-sealed interface Expr extends ParseResult {
   interface Visitor<R> {
@@ -25,6 +29,11 @@ non-sealed interface Expr extends ParseResult {
     R visit(Unary unary);
     R visit(Grouping grouping);
     R visit(Literal literal);
+    R visit(Variable variable);
+    R visit(Assignment assignment);
+    default R visit(Unparseable unparseable) {
+      throw new UnsupportedOperationException("Did not expect to have to handle an unparsable expression");
+    }
   }
 
   <R> R accept(Visitor<R> visitor);
@@ -51,6 +60,21 @@ non-sealed interface Expr extends ParseResult {
     }
   }
   record Unary(Token operator, Expr right) implements Expr {
+    public <R> R accept(Visitor<R> visitor) {
+      return visitor.visit(this);
+    }
+  }
+  record Variable(Token name) implements Expr {
+    public <R> R accept(Visitor<R> visitor) {
+      return visitor.visit(this);
+    }
+  }
+  record Assignment(Token name, Expr value) implements Expr {
+    public <R> R accept(Visitor<R> visitor) {
+      return visitor.visit(this);
+    }
+  }
+  record Unparseable(Token start, Token end) implements Expr {
     public <R> R accept(Visitor<R> visitor) {
       return visitor.visit(this);
     }

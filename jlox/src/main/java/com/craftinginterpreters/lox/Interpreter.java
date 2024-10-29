@@ -1,8 +1,67 @@
 package com.craftinginterpreters.lox;
 
+import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 
-class Interpreter implements Expr.Visitor<Object> {
+class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
+  private final Environment environment;
+
+  public Interpreter() {
+    this(new Environment());
+  }
+
+  Interpreter(Environment environment) {
+    this.environment = environment;
+  }
+
+  void interpret(Program program, Consumer<EvaluationError> handler) {
+    try {
+      for (Stmt statement : program) {
+        execute(statement);
+      }
+    } catch (EvaluationError error) {
+      handler.accept(error);
+    }
+  }
+
+  @Override
+  public Void visit(Stmt.Var stmt) {
+    Object value = null;
+    if (stmt.initializer() != null) {
+      value = evaluate(stmt.initializer());
+    }
+
+    environment.define(stmt.name().lexeme(), value);
+    return null;
+  }
+
+  @Override
+  public Void visit(Stmt.Print stmt) {
+    Object value = evaluate(stmt.expression());
+    System.out.println(stringify(value));
+    return null;
+  }
+
+  @Override
+  public Void visit(Stmt.Block block) {
+    executeBlock(block.statements(), new Environment(environment));
+    return null;
+  }
+
+  @Override
+  public Void visit(Stmt.Expression stmt) {
+    evaluate(stmt.expression());
+    return null;
+  }
+
+  @Override
+  public Object visit(Expr.Assignment assignment) {
+    var result = evaluate(assignment.value());
+    environment.assign(assignment.name(), result);
+    return null;
+  }
+
   @Override
   public Object visit(Expr.Trinary trinary) {
     Object test = evaluate(trinary.head());
@@ -86,7 +145,28 @@ class Interpreter implements Expr.Visitor<Object> {
     return literal.value();
   }
 
-  // Language semantics!
+  @Override
+  public Object visit(Expr.Variable variable) {
+    return environment.get(variable.name());
+  }
+
+  // Language semantics and operations!
+  private Object evaluate(Expr expression) {
+    return expression.accept(this);
+  }
+
+  private void execute(Stmt stmt) {
+    stmt.accept(this);
+  }
+
+  private void executeBlock(List<Stmt> statements, Environment environment) {
+    for (Stmt statement : statements) {
+      // Look ma, no mutation!
+      // Yes child, but that's a lot of allocation!
+      statement.accept(new Interpreter(environment));
+    }
+  }
+
   private boolean isTruthy(Object object) {
     if (object == null) return false;
     if (object instanceof Boolean) return (boolean)object;
@@ -125,9 +205,5 @@ class Interpreter implements Expr.Visitor<Object> {
 
   private static EvaluationError fail(Token location, String failureMessage) {
     throw new EvaluationError(location, failureMessage);
-  }
-
-  private Object evaluate(Expr expression) {
-    return expression.accept(this);
   }
 }

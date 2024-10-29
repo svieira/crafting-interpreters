@@ -1,5 +1,6 @@
 package com.craftinginterpreters.lox;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -19,19 +20,102 @@ class Parser {
   }
 
   ParseResult parse() {
+    var program = new Program();
     try {
-      var expression = expression();
-      if (!isAtEnd()) {
-        return new ParseError(peek(), "Failed to finish parsing");
+      while (!isAtEnd()) {
+        program.add(declaration());
       }
-      return expression;
+      return program;
     } catch (ParseError error) {
-      return error;
+      if (!program.isEmpty()) {
+        // If we successfully parsed at least one statement
+        // then we're not being asked to evaluate an expression in a REPL-like environment
+        // but are instead parsing a larger program. This is a programming error.
+        return error;
+      }
+      try {
+        // Otherwise, it may be a single expression in a REPL-like environment
+        // Rewind and try to parse as an expression
+        current = 0;
+        var expression = expression();
+        if (!isAtEnd()) {
+          return new ParseError(peek(), "Failed to fully parse expression", error);
+        }
+        return expression;
+      } catch (ParseError expressionParseError) {
+        return new ParseError(peek(), "Failed to parse as expression", expressionParseError);
+      }
     }
   }
 
+  private Stmt declaration() {
+    try {
+      if (match(VAR)) return varDeclaration();
+      return statement();
+    } catch (ParseError e) {
+      var initialToken = peek();
+      synchronize();
+      throw error(initialToken, "Failed to parse (next viable token is " + previous() + ")");
+    }
+  }
+
+  private Stmt varDeclaration() {
+    Token name = consume(IDENTIFIER, "Expect variable name.");
+
+    Expr initializer = null;
+    if (match(EQUAL)) {
+      initializer = expression();
+    }
+
+    consume(SEMICOLON, "Expect ';' after variable declaration.");
+    return new Stmt.Var(name, initializer);
+  }
+
+  private Stmt statement() {
+    if (match(PRINT)) return printStatement();
+    if (match(LEFT_BRACE)) return block();
+
+    return expressionStatement();
+  }
+
+  private Stmt block() {
+    List<Stmt> statements = new ArrayList<>();
+
+    while (!check(RIGHT_BRACE) && !isAtEnd()) {
+      statements.add(declaration());
+    }
+
+    consume(RIGHT_BRACE, "Expect '}' after block.");
+    return new Stmt.Block(statements);
+  }
+
+  private Stmt printStatement() {
+    Expr value = expression();
+    consume(SEMICOLON, "Expect ';' after value.");
+    return new Stmt.Print(value);
+  }
+
+  private Stmt expressionStatement() {
+    Expr expr = expression();
+    consume(SEMICOLON, "Expect ';' after expression.");
+    return new Stmt.Expression(expr);
+  }
+
   private Expr expression() {
-    return discardedExpression();
+    return assignment();
+  }
+
+  private Expr assignment() {
+    var leftHandSide = discardedExpression();
+    if (match(EQUAL)) {
+      var equals = previous();
+      var rightHandSide = assignment();
+      if (leftHandSide instanceof Expr.Variable variable) {
+        return new Expr.Assignment(variable.name(), rightHandSide);
+      }
+      throw error(equals, "Invalid assignment target");
+    }
+    return leftHandSide;
   }
 
   private Expr discardedExpression() {
@@ -108,7 +192,7 @@ class Parser {
         consume(RIGHT_PAREN, "Expect ')' after expression.");
         yield new Expr.Grouping(group);
       }
-      case IDENTIFIER -> new Expr.Literal(token.lexeme());
+      case IDENTIFIER -> new Expr.Variable(token);
       case EOF -> throw error(token, "Unexpected end of file");
       default -> {
         throw error(token, "Unable to handle token of type " + token.type());
@@ -155,6 +239,7 @@ class Parser {
   }
 
   private Token advance() {
+    if (isAtEnd()) return peek();
     current += 1;
     return previous();
   }
@@ -178,7 +263,6 @@ class Parser {
   }
 
   private ParseError error(Token token, String message) {
-    Lox.error(token, message);
     return new ParseError(token, message);
   }
 
