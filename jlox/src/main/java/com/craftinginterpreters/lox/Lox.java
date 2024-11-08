@@ -6,9 +6,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Pattern;
 
 public class Lox {
@@ -17,23 +15,37 @@ public class Lox {
   private static boolean hadRuntimeError = false;
   private static final Pattern DIRECTIVE = Pattern.compile("^(?<directive>:\\w+)");
 
-  private enum Mode { TOKENS, PARSE_TREE, EVALUATE; }
+  private enum Mode {
+    TOKENS, PARSE_TREE, EVALUATE;
+    static Optional<EnumSet<Mode>> parse(String directive) {
+      return Optional.ofNullable(switch (directive) {
+        case ":lex", ":tokens" -> EnumSet.of(Mode.TOKENS);
+        case ":ast", ":tree", ":parse" -> EnumSet.of(Mode.PARSE_TREE);
+        case ":eval", ":exec" -> EnumSet.of(Mode.EVALUATE);
+        case ":all" -> EnumSet.allOf(Mode.class);
+        default -> null;
+      });
+    }
+  }
 
   public static void main(String[] args) throws IOException {
-    if (args.length > 1) {
-      System.out.println("Usage: jlox [script]");
+    if (args.length > 3) {
+      System.out.println("Usage: jlox [script [--mode lex | ast | eval]]");
       System.exit(64);
-    } else if (args.length == 1) {
+    } else if (args.length > 0) {
       System.out.println("Running file " + args[0]);
-      runFile(args[0]);
+      runFile(args[0], args.length == 3 ? args[2] : "eval");
     } else {
       runPrompt();
     }
   }
 
-  private static void runFile(String path) throws IOException {
+  private static void runFile(String path, String mode) throws IOException {
     byte[] bytes = "-".equals(path.trim()) ? System.in.readAllBytes() : Files.readAllBytes(Paths.get(path));
-    run(new String(bytes, Charset.defaultCharset()), EnumSet.of(Mode.EVALUATE));
+    var directive = mode.startsWith(":") ? mode : ":" + mode;
+    var modes = Mode.parse(directive).orElse(EnumSet.of(Mode.EVALUATE));
+    System.out.println("Running in " + mode + " parsed to " + modes);
+    run(new String(bytes, Charset.defaultCharset()), modes);
     // Indicate an error in the exit code.
     if (hadError) System.exit(65);
     if (hadRuntimeError) System.exit(70);
@@ -72,7 +84,14 @@ public class Lox {
 
   private static void run(String source, Set<Mode> modes) {
     Scanner scanner = new Scanner(source);
-    List<Token> tokens = scanner.scanTokens();
+    Scanner.ScanResults results = scanner.scanTokens();
+    switch (results) {
+      case Scanner.TokenList tokens -> parseAndRun(tokens, modes);
+      case Scanner.LexError lexError -> error(lexError.getLine(), lexError.getColumn(), lexError.getMessage());
+    }
+  }
+
+  private static void parseAndRun(Scanner.TokenList tokens, Set<Mode> modes) {
     if (modes.contains(Mode.TOKENS)) {
       for (Token token: tokens) {
         System.out.println(token);
@@ -109,9 +128,9 @@ public class Lox {
       }
       case ParseError e -> {
         error(e.token(), e.message());
-        if (e.statementParseException() != null) {
+        if (e.earlierError() != null) {
           System.err.println("Additionally, failed to parse as a statement");
-          error(e.statementParseException().token(), e.statementParseException().message());
+          error(e.earlierError().token(), e.earlierError().message());
         }
       }
     }
@@ -126,16 +145,12 @@ public class Lox {
 
     String directive = match.group("directive");
 
-    var modes = switch (directive) {
-      case ":lex", ":tokens" -> EnumSet.of(Mode.TOKENS);
-      case ":ast", ":tree", ":parse" -> EnumSet.of(Mode.PARSE_TREE);
-      case ":eval" -> EnumSet.of(Mode.EVALUATE);
-      case ":all" -> EnumSet.allOf(Mode.class);
-      default -> throw new EvaluationError(
-              new Token(TokenType.INVALID, null, null, 0, 0),
-              "Unknown directive " + directive
-      );
-    };
+    var modes = Mode.parse(directive).orElseThrow(() ->
+      new EvaluationError(
+            new Token(TokenType.INVALID, null, null, 0, 0),
+            "Unknown directive " + directive
+      )
+    );
 
     var evalLine = line.trim().equals(directive)
             ? lastLine

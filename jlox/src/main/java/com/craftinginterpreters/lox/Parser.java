@@ -15,6 +15,8 @@ class Parser {
   private final List<Token> tokens;
   private int current = 0;
 
+  private enum Context { IN_LOOP; }
+
   Parser(List<Token> tokens) {
     this.tokens = tokens;
   }
@@ -23,7 +25,7 @@ class Parser {
     var program = new Program();
     try {
       while (!isAtEnd()) {
-        program.add(declaration());
+        program.add(declaration(EnumSetQueue.empty(Context.class)));
       }
       return program;
     } catch (ParseError error) {
@@ -48,10 +50,10 @@ class Parser {
     }
   }
 
-  private Stmt declaration() {
+  private Stmt declaration(EnumSetQueue<Context> context) {
     try {
-      if (match(VAR)) return varDeclaration();
-      return statement();
+      if (match(VAR)) return varDeclaration(context);
+      return statement(context);
     } catch (ParseError e) {
       var initialToken = peek();
       synchronize();
@@ -59,7 +61,7 @@ class Parser {
     }
   }
 
-  private Stmt varDeclaration() {
+  private Stmt varDeclaration(EnumSetQueue<Context> context) {
     Token name = consume(IDENTIFIER, "Expect variable name.");
 
     Expr initializer = null;
@@ -71,18 +73,91 @@ class Parser {
     return new Stmt.Var(name, initializer);
   }
 
-  private Stmt statement() {
+  private Stmt statement(EnumSetQueue<Context> context) {
+    if (match(FOR)) return forStatement(context);
+    if (match(IF)) return ifStatement(context);
     if (match(PRINT)) return printStatement();
-    if (match(LEFT_BRACE)) return block();
+    if (match(WHILE)) return whileStatement(context);
+    if (match(LEFT_BRACE)) return block(context);
+    if (match(BREAK, CONTINUE)) return loopControl(context);
 
     return expressionStatement();
   }
 
-  private Stmt block() {
+  private Stmt forStatement(EnumSetQueue<Context> context) {
+    // Desugaring for to a while
+    consume(LEFT_PAREN, "Expect '(' after 'for'.");
+    Stmt initializer;
+    if (match(SEMICOLON)) {
+      initializer = null;
+    } else if (match(VAR)) {
+      initializer = varDeclaration(context);
+    } else {
+      initializer = expressionStatement();
+    }
+    Expr condition = !check(SEMICOLON) ? expression() : new Expr.Literal(true);
+    consume(SEMICOLON, "Expect ';' after loop condition.");
+
+    Expr increment = !check(RIGHT_PAREN) ? expression() : null;
+    consume(RIGHT_PAREN, "Expect ')' after for clauses.");
+    Stmt body = statement(EnumSetQueue.push(context, Context.IN_LOOP));
+
+    if (increment != null) {
+      body = new Stmt.Block(body, new Stmt.Expression(increment));
+    }
+
+    body = new Stmt.While(condition, body);
+
+    if (initializer != null) {
+      body = new Stmt.Block(initializer, body);
+    }
+
+    return body;
+  }
+
+  private Stmt whileStatement(EnumSetQueue<Context> context) {
+    consume(LEFT_PAREN, "Expect '(' after 'while'.");
+    Expr condition = expression();
+    consume(RIGHT_PAREN, "Expect ')' after while condition.");
+    Stmt body = statement(EnumSetQueue.push(context, Context.IN_LOOP));
+    return new Stmt.While(condition, body);
+  }
+
+  private Stmt ifStatement(EnumSetQueue<Context> context) {
+    consume(LEFT_PAREN, "Expect '(' after 'if'.");
+    Expr condition = expression();
+    consume(RIGHT_PAREN, "Expect ')' after if condition.");
+
+    Stmt whenTrue = statement(context);
+    Stmt whenFalse = null;
+    if (match(ELSE)) {
+      whenFalse = statement(context);
+    }
+
+    return new Stmt.If(condition, whenTrue, whenFalse);
+  }
+
+  private Stmt loopControl(EnumSetQueue<Context> context) {
+    var token = previous();
+    consume(SEMICOLON, "Expect ';' after loop control.");
+
+    if (!context.contains(Context.IN_LOOP)) {
+      throw new ParseError(token, "loop control must be inside of loop");
+    }
+
+    var type = switch (token.type()) {
+      case BREAK -> Stmt.LoopControl.Type.BREAK;
+      case CONTINUE -> Stmt.LoopControl.Type.CONTINUE;
+      default -> throw new ParseError(token, "Not a valid loop control keyword");
+    };
+    return new Stmt.LoopControl(token, type);
+  }
+
+  private Stmt block(EnumSetQueue<Context> context) {
     List<Stmt> statements = new ArrayList<>();
 
     while (!check(RIGHT_BRACE) && !isAtEnd()) {
-      statements.add(declaration());
+      statements.add(declaration(context));
     }
 
     consume(RIGHT_BRACE, "Expect '}' after block.");
@@ -106,7 +181,7 @@ class Parser {
   }
 
   private Expr assignment() {
-    var leftHandSide = discardedExpression();
+    var leftHandSide = or();
     if (match(EQUAL)) {
       var equals = previous();
       var rightHandSide = assignment();
@@ -116,6 +191,17 @@ class Parser {
       throw error(equals, "Invalid assignment target");
     }
     return leftHandSide;
+  }
+
+  private Expr or() {
+    // If we had more of these it might make sense to duplicate the method or copy and paste the impl
+    var e = binaryOp(this::and, OR);
+    return e instanceof Expr.Binary b && b.operator().type().equals(OR) ? new Expr.Logical(b.left(), b.operator(), b.right()) : e;
+  }
+
+  private Expr and() {
+    var e = binaryOp(this::discardedExpression, AND);
+    return e instanceof Expr.Binary b && b.operator().type().equals(AND) ? new Expr.Logical(b.left(), b.operator(), b.right()) : e;
   }
 
   private Expr discardedExpression() {
@@ -240,7 +326,7 @@ class Parser {
 
   private Token advance() {
     if (isAtEnd()) return peek();
-    current += 1;
+    do current += 1; while (check(COMMENT));
     return previous();
   }
 

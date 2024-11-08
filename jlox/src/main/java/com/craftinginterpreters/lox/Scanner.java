@@ -24,11 +24,14 @@ class Scanner {
           entry("this", THIS),
           entry("true", TRUE),
           entry("var", VAR),
-          entry("while", WHILE)
+          entry("while", WHILE),
+          entry("break", BREAK),
+          entry("continue", CONTINUE)
   );
 
   private final String source;
-  private final List<Token> tokens = new ArrayList<>();
+  private final TokenList tokens = new TokenList();
+  private LexError error;
   private int start = 0;
   private int current = 0;
   private int line = 1;
@@ -38,11 +41,36 @@ class Scanner {
     this.source = source;
   }
 
-  List<Token> scanTokens() {
+  public sealed interface ScanResults permits TokenList, LexError {}
+  public static final class TokenList extends ArrayList<Token> implements ScanResults {}
+  public static final class LexError extends RuntimeException implements ScanResults {
+    private final int line;
+    private final int column;
+
+    LexError(String message, int line, int column) {
+      super(message);
+      this.line = line;
+      this.column = column;
+    }
+
+    public int getLine() {
+      return line;
+    }
+
+    public int getColumn() {
+      return column;
+    }
+  }
+
+  ScanResults scanTokens() {
     while (!isAtEnd()) {
       // We are at the beginning of the next lexeme.
       start = current;
       scanToken();
+    }
+
+    if (error != null) {
+      return error;
     }
 
     tokens.add(new Token(EOF, "", null, line, column));
@@ -79,14 +107,14 @@ class Scanner {
         if (match('/')) {
           // A line comment goes until the end of the line.
           while (peek() != '\n' && !isAtEnd()) advance();
-          addToken(COMMENT);
+          // addToken(COMMENT);
         } else if (match('*')) {
           var blockCommentBeginningLineNumber = line;
           var blockCommentBeginningColumnNumber = column;
           var blockCommentDepth = 1;
           while (blockCommentDepth > 0) {
             if (isAtEnd()) {
-              Lox.error(blockCommentBeginningLineNumber, blockCommentBeginningColumnNumber, "Unclosed block comment detected");
+              error = new LexError("Unclosed block comment detected", blockCommentBeginningLineNumber, blockCommentBeginningColumnNumber);
               break;
             }
             switch (advance()) {
@@ -102,7 +130,7 @@ class Scanner {
               }
             }
           }
-          addToken(COMMENT);
+          // addToken(COMMENT);
         } else {
           addToken(SLASH);
         }
@@ -117,7 +145,8 @@ class Scanner {
           identifier();
         } else {
           addToken(INVALID, c);
-          Lox.error(line, column, "Unexpected character.");
+          // TODO: Continue lexing here if we've got a surrogate to try to get the real character the user typed.
+          error = new LexError("Unexpected character: '" + c + "' (" + Character.getName(c) + ")", line, column);
         }
       }
     }
@@ -158,7 +187,7 @@ class Scanner {
     }
 
     if (isAtEnd()) {
-      Lox.error(stringStartLine, stringStartColumn, "Unterminated string.");
+      error = new LexError("Unterminated string.", stringStartLine, stringStartColumn);
       return;
     }
 

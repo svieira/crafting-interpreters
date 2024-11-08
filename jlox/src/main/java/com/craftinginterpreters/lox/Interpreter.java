@@ -37,6 +37,39 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   }
 
   @Override
+  public Void visit(Stmt.If stmt) {
+    if (isTruthy(evaluate(stmt.condition()))) {
+      execute(stmt.whenTrue());
+    } else if (stmt.whenFalse() != null) {
+      execute(stmt.whenFalse());
+    }
+    return null;
+  }
+
+  @Override
+  public Void visit(Stmt.While stmt) {
+    while (isTruthy(evaluate(stmt.condition()))) {
+      try {
+        execute(stmt.body());
+      } catch (LoopControlSignal signal) {
+        if (signal.control.type() == Stmt.LoopControl.Type.BREAK) {
+          break;
+        } else if (signal.control.type() == Stmt.LoopControl.Type.CONTINUE) {
+          continue;
+        } else {
+          throw new EvaluationError(signal.control.token(), "Do not know how to handle signal of type " + signal.control.type());
+        }
+      }
+    }
+    return null;
+  }
+
+  @Override
+  public Void visit(Stmt.LoopControl loopControl) {
+    throw new LoopControlSignal(loopControl);
+  }
+
+  @Override
   public Void visit(Stmt.Print stmt) {
     Object value = evaluate(stmt.expression());
     System.out.println(stringify(value));
@@ -60,6 +93,16 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     var result = evaluate(assignment.value());
     environment.assign(assignment.name(), result);
     return null;
+  }
+
+  @Override
+  public Object visit(Expr.Logical logical) {
+    Object left = evaluate(logical.left());
+    boolean isOr = logical.operator().type() == TokenType.OR;
+    if (isOr) {
+      return isTruthy(left) ? left : evaluate(logical.right());
+    }
+    return !isTruthy(left) ? left : evaluate(logical.right());
   }
 
   @Override
@@ -205,5 +248,20 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
   private static EvaluationError fail(Token location, String failureMessage) {
     throw new EvaluationError(location, failureMessage);
+  }
+
+  private static final class LoopControlSignal extends RuntimeException {
+    final Stmt.LoopControl control;
+
+    public LoopControlSignal(Stmt.LoopControl control) {
+      this.control = control;
+    }
+
+    @Override
+    public synchronized Throwable fillInStackTrace() {
+      // As a signal, we never need to know where we are coming from
+      // and filling in the stack trace is expensive.
+      return this;
+    }
   }
 }

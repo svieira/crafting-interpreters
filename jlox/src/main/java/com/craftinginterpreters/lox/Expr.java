@@ -5,7 +5,9 @@ package com.craftinginterpreters.lox;
  * <pre><code>
  * expression     → assignment ;
  * assignment     → IDENTIFIER "=" assignment
- *                | discarded ;
+ *                | logic_or ;
+ * logic_or       → logic_and ( "or" logic_and )* ;
+ * logic_and      → discarded ( "and" discarded )* ;
  * discarded      → ternary ( "," ternary )* ;
  * ternary        → equality (( "?" ternary ":" ternary ) | "?:" ternary )* ;
  * equality       → comparison ( ( "!=" | "==" ) comparison )* ;
@@ -26,6 +28,7 @@ non-sealed interface Expr extends ParseResult {
   interface Visitor<R> {
     R visit(Trinary trinary);
     R visit(Binary binary);
+    R visit(Logical logical);
     R visit(Unary unary);
     R visit(Grouping grouping);
     R visit(Literal literal);
@@ -34,6 +37,7 @@ non-sealed interface Expr extends ParseResult {
     default R visit(Unparseable unparseable) {
       throw new UnsupportedOperationException("Did not expect to have to handle an unparsable expression");
     }
+
   }
 
   <R> R accept(Visitor<R> visitor);
@@ -43,8 +47,12 @@ non-sealed interface Expr extends ParseResult {
       return visitor.visit(this);
     }
   }
-
   record Binary(Expr left, Token operator, Expr right) implements Expr {
+    public <R> R accept(Visitor<R> visitor) {
+      return visitor.visit(this);
+    }
+  }
+  record Logical(Expr left, Token operator, Expr right) implements Expr {
     public <R> R accept(Visitor<R> visitor) {
       return visitor.visit(this);
     }

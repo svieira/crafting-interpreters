@@ -19,6 +19,11 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
   }
 
   @Override
+  public String visit(Expr.Logical logical) {
+    return parenthesize(logical.operator().lexeme(), logical.left(), logical.right());
+  }
+
+  @Override
   public String visit(Expr.Grouping grouping) {
     return parenthesize("group", grouping.expression());
   }
@@ -36,7 +41,7 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
 
   @Override
   public String visit(Expr.Assignment assignment) {
-    return parenthesize(assignment.name() + "=", assignment.value());
+    return parenthesize(assignment.name().lexeme() + "=", assignment.value());
   }
 
   @Override
@@ -49,7 +54,7 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
 
   @Override
   public String visit(Expr.Variable variable) {
-    return "($deref " + variable.name().lexeme() + ")";
+    return variable.name().lexeme();
   }
 
   @Override
@@ -82,8 +87,9 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
 
   @Override
   public String visit(Stmt.Var declaration) {
-    return indent + "[var "
-            + declaration.name().lexeme()
+    var variableName = indent + "[var " + declaration.name().lexeme();
+    if (declaration.initializer() == null) return variableName + "]";
+    return variableName
             + " "
             + declaration.initializer().accept(this)
             + "]";
@@ -91,14 +97,43 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
 
   @Override
   public String visit(Stmt.Block block) {
-    var newDepth = indent.length() / 2 + 1;
-    return indent + "[$" + newDepth
+    var newDepth = indent();
+    return visit(block, "$" + newDepth);
+  }
+
+  private int indent() {
+    return indent.length() / 2 + 1;
+  }
+
+  private String visit(Stmt.Block block, String blockName) {
+    var newDepth = indent();
+    return indent + "[" + blockName
             + block
-                .statements()
-                .stream()
-                .map(s -> s.accept(new AstPrinter(newDepth)))
-                .collect(Collectors.joining(""))
-            + "]\n";
+            .statements()
+            .stream()
+            .map(s -> s.accept(new AstPrinter(newDepth)))
+            .collect(Collectors.joining(""))
+            + "]";
+  }
+
+  @Override
+  public String visit(Stmt.If anIf) {
+    return indent + "[if "
+            + parenthesize(anIf.condition().accept(this))
+            + anIf.whenTrue().accept(new AstPrinter(indent()))
+            + anIf.whenFalse().accept(new AstPrinter(indent())) + "]";
+  }
+
+  @Override
+  public String visit(Stmt.While aWhile) {
+    return indent + "[while "
+            + parenthesize(aWhile.condition().accept(this))
+            + aWhile.body().accept(new AstPrinter(indent())) + "]";
+  }
+
+  @Override
+  public String visit(Stmt.LoopControl control) {
+    return indent + "[" + control.type().toString().toLowerCase() + "]";
   }
 
   @Override

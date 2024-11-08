@@ -3,11 +3,11 @@ package com.craftinginterpreters.lox;
 public final class ParseError extends RuntimeException implements ParseResult {
   private final Token token;
   private final String message;
-  private ParseError statementParseException;
+  private ParseError earlierError;
 
-  ParseError(Token token, String message, ParseError statementParseException) {
+  ParseError(Token token, String message, ParseError earlierError) {
     this(token, message);
-    this.statementParseException = statementParseException;
+    this.earlierError = earlierError;
   }
 
   ParseError(Token token, String message) {
@@ -24,7 +24,7 @@ public final class ParseError extends RuntimeException implements ParseResult {
     return message;
   }
 
-  public ParseError statementParseException() {
-    return statementParseException;
+  public ParseError earlierError() {
+    return earlierError;
   }
 }
