@@ -1,18 +1,29 @@
 package com.craftinginterpreters.lox;
 
+import java.io.PrintStream;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 
 class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   private final Environment environment;
+  private final PrintStream printTarget;
 
   public Interpreter() {
-    this(new Environment());
+    this(new Environment(), System.out);
   }
 
   Interpreter(Environment environment) {
+    this(environment, System.out);
+  }
+
+  Interpreter(PrintStream printTarget) {
+    this(new Environment(), printTarget);
+  }
+
+  Interpreter(Environment environment, PrintStream printTarget) {
     this.environment = environment;
+    this.printTarget = printTarget;
   }
 
   void interpret(Program program, Consumer<EvaluationError> handler) {
@@ -72,7 +83,7 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   @Override
   public Void visit(Stmt.Print stmt) {
     Object value = evaluate(stmt.expression());
-    System.out.println(stringify(value));
+    printTarget.println(stringify(value));
     return null;
   }
 
@@ -206,7 +217,7 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     for (Stmt statement : statements) {
       // Look ma, no mutation!
       // Yes child, but that's a lot of allocation!
-      statement.accept(new Interpreter(environment));
+      statement.accept(new Interpreter(environment, printTarget));
     }
   }
 

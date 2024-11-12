@@ -3,6 +3,10 @@ package com.craftinginterpreters.lox;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class InterpreterTest {
@@ -24,7 +28,11 @@ class InterpreterTest {
             assertTrue(result != null);
           }
           case Program program -> {
-            new Interpreter().interpret(program, Assertions::assertNull);
+            var env = new Environment();
+            var prints = new ByteArrayOutputStream();
+            var output = new PrintStream(prints, true);
+            new Interpreter(env, output).interpret(program, Assertions::assertNull);
+            assertEquals("0\n1\n2\n", prints.toString(StandardCharsets.UTF_8));
           }
         }
       }
