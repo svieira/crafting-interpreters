@@ -2,7 +2,7 @@ package com.craftinginterpreters.lox;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Supplier;
+import java.util.function.Function;
 
 import static com.craftinginterpreters.lox.TokenType.*;
 
@@ -15,7 +15,8 @@ class Parser {
   private final List<Token> tokens;
   private int current = 0;
 
-  private enum Context { IN_LOOP; }
+  private enum StatementContext { IN_FUNCTION, IN_LOOP; }
+  private enum ExpressionContext { IN_CALL; }
 
   Parser(List<Token> tokens) {
     this.tokens = tokens;
@@ -25,7 +26,7 @@ class Parser {
     var program = new Program();
     try {
       while (!isAtEnd()) {
-        program.add(declaration(EnumSetQueue.empty(Context.class)));
+        program.add(declaration(EnumSetQueue.empty(StatementContext.class)));
       }
       return program;
     } catch (ParseError error) {
@@ -50,18 +51,46 @@ class Parser {
     }
   }
 
-  private Stmt declaration(EnumSetQueue<Context> context) {
+  private Program program(EnumSetQueue<StatementContext> context) {
+    var program = new Program();
+    while (!isAtEnd() && !(context.containsAtHead(StatementContext.IN_FUNCTION) && check(RIGHT_BRACE))) {
+      program.add(declaration(context));
+    }
+    return program;
+  }
+
+  private Stmt declaration(EnumSetQueue<StatementContext> context) {
     try {
+      if (match(FUN)) return callable("function", context);
       if (match(VAR)) return varDeclaration(context);
       return statement(context);
     } catch (ParseError e) {
       var initialToken = peek();
       synchronize();
-      throw error(initialToken, "Failed to parse (next viable token is " + previous() + ")");
+      throw error(initialToken, "Failed to parse (next viable token is " + previous() + ") due to " + e.message());
     }
   }
 
-  private Stmt varDeclaration(EnumSetQueue<Context> context) {
+  private Stmt callable(String callableType, EnumSetQueue<StatementContext> context) {
+    var name = consume(IDENTIFIER, "Expected " + callableType + " name");
+    consume(LEFT_PAREN, "Expected '(' after " + callableType + " name.");
+    var parameters = new ArrayList<Token>();
+    if (!check(RIGHT_PAREN)) {
+      do {
+        if (parameters.size() >= 255) {
+          throw error(peek(), "Can't have more than 255 parameters.");
+        }
+
+        parameters.add(consume(IDENTIFIER, "Expect parameter name."));
+      } while (match(COMMA));
+    }
+    consume(RIGHT_PAREN, "Expect ')' after parameters.");
+    consume(LEFT_BRACE, "Expect '{' before " + callableType + " body.");
+    List<Stmt> body = block(EnumSetQueue.push(context, StatementContext.IN_FUNCTION));
+    return new Stmt.Function(name, parameters, body);
+  }
+
+  private Stmt varDeclaration(EnumSetQueue<StatementContext> context) {
     Token name = consume(IDENTIFIER, "Expect variable name.");
 
     Expr initializer = null;
@@ -73,18 +102,19 @@ class Parser {
     return new Stmt.Var(name, initializer);
   }
 
-  private Stmt statement(EnumSetQueue<Context> context) {
+  private Stmt statement(EnumSetQueue<StatementContext> context) {
     if (match(FOR)) return forStatement(context);
     if (match(IF)) return ifStatement(context);
     if (match(PRINT)) return printStatement();
+    if (match(RETURN)) return returnStatement(context);
     if (match(WHILE)) return whileStatement(context);
-    if (match(LEFT_BRACE)) return block(context);
+    if (match(LEFT_BRACE)) return new Stmt.Block(block(context));
     if (match(BREAK, CONTINUE)) return loopControl(context);
 
     return expressionStatement();
   }
 
-  private Stmt forStatement(EnumSetQueue<Context> context) {
+  private Stmt forStatement(EnumSetQueue<StatementContext> context) {
     // Desugaring for to a while
     consume(LEFT_PAREN, "Expect '(' after 'for'.");
     Stmt initializer;
@@ -100,7 +130,7 @@ class Parser {
 
     Expr increment = !check(RIGHT_PAREN) ? expression() : null;
     consume(RIGHT_PAREN, "Expect ')' after for clauses.");
-    Stmt body = statement(EnumSetQueue.push(context, Context.IN_LOOP));
+    Stmt body = statement(EnumSetQueue.push(context, StatementContext.IN_LOOP));
 
     if (increment != null) {
       body = new Stmt.Block(body, new Stmt.Expression(increment));
@@ -115,15 +145,15 @@ class Parser {
     return body;
   }
 
-  private Stmt whileStatement(EnumSetQueue<Context> context) {
+  private Stmt whileStatement(EnumSetQueue<StatementContext> context) {
     consume(LEFT_PAREN, "Expect '(' after 'while'.");
     Expr condition = expression();
     consume(RIGHT_PAREN, "Expect ')' after while condition.");
-    Stmt body = statement(EnumSetQueue.push(context, Context.IN_LOOP));
+    Stmt body = statement(EnumSetQueue.push(context, StatementContext.IN_LOOP));
     return new Stmt.While(condition, body);
   }
 
-  private Stmt ifStatement(EnumSetQueue<Context> context) {
+  private Stmt ifStatement(EnumSetQueue<StatementContext> context) {
     consume(LEFT_PAREN, "Expect '(' after 'if'.");
     Expr condition = expression();
     consume(RIGHT_PAREN, "Expect ')' after if condition.");
@@ -137,11 +167,11 @@ class Parser {
     return new Stmt.If(condition, whenTrue, whenFalse);
   }
 
-  private Stmt loopControl(EnumSetQueue<Context> context) {
+  private Stmt loopControl(EnumSetQueue<StatementContext> context) {
     var token = previous();
     consume(SEMICOLON, "Expect ';' after loop control.");
 
-    if (!context.contains(Context.IN_LOOP)) {
+    if (!context.contains(StatementContext.IN_LOOP)) {
       throw new ParseError(token, "loop control must be inside of loop");
     }
 
@@ -153,7 +183,7 @@ class Parser {
     return new Stmt.LoopControl(token, type);
   }
 
-  private Stmt block(EnumSetQueue<Context> context) {
+  private List<Stmt> block(EnumSetQueue<StatementContext> context) {
     List<Stmt> statements = new ArrayList<>();
 
     while (!check(RIGHT_BRACE) && !isAtEnd()) {
@@ -161,7 +191,7 @@ class Parser {
     }
 
     consume(RIGHT_BRACE, "Expect '}' after block.");
-    return new Stmt.Block(statements);
+    return statements;
   }
 
   private Stmt printStatement() {
@@ -170,21 +200,42 @@ class Parser {
     return new Stmt.Print(value);
   }
 
+  private Stmt returnStatement(EnumSetQueue<StatementContext> context) {
+    Token keyword = previous();
+    if (!context.contains(StatementContext.IN_FUNCTION)) {
+      throw error(keyword, "May only use return inside of function");
+    }
+    Expr value = null;
+    if (!check(SEMICOLON)) {
+      value = expression();
+    }
+
+    consume(SEMICOLON, "Expect ';' after return value.");
+    return new Stmt.Return(keyword, value);
+  }
+
   private Stmt expressionStatement() {
     Expr expr = expression();
     consume(SEMICOLON, "Expect ';' after expression.");
+    if (expr instanceof Expr.Function) {
+      throw error(previous(), "Function expression in statement position");
+    }
     return new Stmt.Expression(expr);
   }
 
   private Expr expression() {
-    return assignment();
+    return assignment(EnumSetQueue.empty(ExpressionContext.class));
   }
 
-  private Expr assignment() {
-    var leftHandSide = or();
+  private Expr expression(EnumSetQueue<ExpressionContext> context) {
+    return assignment(context);
+  }
+
+  private Expr assignment(EnumSetQueue<ExpressionContext> context) {
+    var leftHandSide = or(context);
     if (match(EQUAL)) {
       var equals = previous();
-      var rightHandSide = assignment();
+      var rightHandSide = assignment(context);
       if (leftHandSide instanceof Expr.Variable variable) {
         return new Expr.Assignment(variable.name(), rightHandSide);
       }
@@ -193,42 +244,46 @@ class Parser {
     return leftHandSide;
   }
 
-  private Expr or() {
+  private Expr or(EnumSetQueue<ExpressionContext> context) {
     // If we had more of these it might make sense to duplicate the method or copy and paste the impl
-    var e = binaryOp(this::and, OR);
+    var e = binaryOp(this::and, context, OR);
     return e instanceof Expr.Binary b && b.operator().type().equals(OR) ? new Expr.Logical(b.left(), b.operator(), b.right()) : e;
   }
 
-  private Expr and() {
-    var e = binaryOp(this::discardedExpression, AND);
+  private Expr and(EnumSetQueue<ExpressionContext> context) {
+    var e = binaryOp(this::discardedExpression, context, AND);
     return e instanceof Expr.Binary b && b.operator().type().equals(AND) ? new Expr.Logical(b.left(), b.operator(), b.right()) : e;
   }
 
-  private Expr discardedExpression() {
-    return binaryOp(this::ternary, COMMA);
+  private Expr discardedExpression(EnumSetQueue<ExpressionContext> context) {
+    // We want to allow discards in groups in calls - e. g. `odd((but, why.not), indeed)`
+    if (context.containsAtHead(ExpressionContext.IN_CALL)) {
+      return ternary(context);
+    }
+    return binaryOp(this::ternary, context, COMMA);
   }
 
-  private Expr ternary() {
+  private Expr ternary(EnumSetQueue<ExpressionContext> context) {
     if (match(QUESTION_MARK, ELVIS)) {
       // Error: Leading ternary operator
       var operator = previous();
-      var _right = ternary(); // Go ahead and attempt to recover
+      var _right = ternary(context); // Go ahead and attempt to recover
       throw error(operator, "Ternary operator missing test condition");
     } else if (match(COLON)) {
       // Error: Leading ternary operator
       var operator = previous();
-      var _right = ternary(); // Go ahead and attempt to recover
+      var _right = ternary(context); // Go ahead and attempt to recover
       throw error(operator, "Unexpected " + COLON + ". Are you missing a " + QUESTION_MARK + "?");
     }
-    var expr = equality();
+    var expr = equality(context);
     while (match(QUESTION_MARK, ELVIS)) {
       var firstOp = previous();
-      var left = ternary();
+      var left = ternary(context);
       if (firstOp.type() == ELVIS) {
         expr = new Expr.Binary(expr, firstOp, left);
       } else if (match(COLON)) {
         var secondOp = previous();
-        var right = ternary();
+        var right = ternary(context);
         expr = new Expr.Trinary(expr, firstOp, left, secondOp, right);
       } else {
         throw error(previous(), "Expecting " + COLON + " following " + QUESTION_MARK);
@@ -237,44 +292,80 @@ class Parser {
     return expr;
   }
 
-  private Expr equality() {
-    return binaryOp(this::comparison, BANG_EQUAL, EQUAL_EQUAL);
+  private Expr equality(EnumSetQueue<ExpressionContext> context) {
+    return binaryOp(this::comparison, context, BANG_EQUAL, EQUAL_EQUAL);
   }
 
-  private Expr comparison() {
-    return binaryOp(this::term, GREATER_EQUAL, GREATER, LESS_EQUAL, LESS);
+  private Expr comparison(EnumSetQueue<ExpressionContext> context) {
+    return binaryOp(this::term, context, GREATER_EQUAL, GREATER, LESS_EQUAL, LESS);
   }
 
-  private Expr term() {
-    return binaryOp(this::factor, UNAMBIGUOUS_TERM_TOKENS, AMBIGUOUS_TERM_TOKENS);
+  private Expr term(EnumSetQueue<ExpressionContext> context) {
+    return binaryOp(this::factor, context, UNAMBIGUOUS_TERM_TOKENS, AMBIGUOUS_TERM_TOKENS);
   }
 
-  private Expr factor() {
-    return binaryOp(this::unary, STAR, SLASH);
+  private Expr factor(EnumSetQueue<ExpressionContext> context) {
+    return binaryOp(this::unary, context, STAR, SLASH);
   }
 
-  private Expr unary() {
+  private Expr unary(EnumSetQueue<ExpressionContext> context) {
     if (match(BANG, MINUS)) {
       Token operator = previous();
-      Expr right = unary();
+      Expr right = unary(context);
       return new Expr.Unary(operator, right);
     }
-    return coalesce();
+    return coalesce(context);
   }
 
-  private Expr coalesce() {
-    return binaryOp(this::primary, COALESCE);
+  private Expr coalesce(EnumSetQueue<ExpressionContext> context) {
+    return binaryOp(this::call, context, COALESCE);
   }
 
-  private Expr primary() {
+  private Expr call(EnumSetQueue<ExpressionContext> context) {
+    Expr expr = primary(context);
+
+    while (true) {
+      var args = arguments(this::expression, EnumSetQueue.push(context, ExpressionContext.IN_CALL));
+      if (args != null) {
+        expr = new Expr.Call(expr, previous(), args);
+      } else {
+        break;
+      }
+    }
+
+    return expr;
+  }
+
+  /** Matches an argument list from the opening '(' to the closing ')'. Returns `null` on missing. */
+  private <T> List<T> arguments(Function<EnumSetQueue<ExpressionContext>, T> op, EnumSetQueue<ExpressionContext> context) {
+    if (!match(LEFT_PAREN)) {
+      return null;
+    }
+
+    List<T> arguments = new ArrayList<>();
+    if (!check(RIGHT_PAREN)) {
+      do {
+        if (arguments.size() >= 255) {
+          // TODO: Re-add fail-parse-and-continue
+          throw error(peek(), "Cannot have more than 255 arguments");
+        }
+        arguments.add(op.apply(context));
+      } while (match(COMMA));
+    }
+    consume(RIGHT_PAREN, "Expect ')' after arguments.");
+    return arguments;
+  }
+
+  private Expr primary(EnumSetQueue<ExpressionContext> context) {
     var token = advance();
     return switch (token.type()) {
       case TRUE -> new Expr.Literal(true);
       case FALSE -> new Expr.Literal(false);
       case NIL -> new Expr.Literal(null);
       case NUMBER, STRING -> new Expr.Literal(token.literal());
+      case FUN -> function(context);
       case LEFT_PAREN -> {
-        var group = expression();
+        var group = expression(context);
         consume(RIGHT_PAREN, "Expect ')' after expression.");
         yield new Expr.Grouping(group);
       }
@@ -286,23 +377,50 @@ class Parser {
     };
   }
 
+  private Token identifier(EnumSetQueue<ExpressionContext> context) {
+    var token = advance();
+    if (token.type() != IDENTIFIER) {
+      throw error(token, "Expect identifier");
+    }
+    return token;
+  }
+
+  private Expr function(EnumSetQueue<ExpressionContext> context) {
+    var keyword = previous();
+    var token = peek();
+    var name = new Token(IDENTIFIER, "<anonymous>", null, keyword.line(), keyword.column());
+    if (token.type() == IDENTIFIER) {
+      name = token;
+      advance();
+      token = peek();
+    }
+    if (!token.type().equals(LEFT_PAREN)) {
+      throw error(token, "Expected '(' after function keyword for function expression.");
+    }
+    var args = arguments(this::identifier, context);
+    consume(LEFT_BRACE, "Expect '{' after function header");
+    var body = program(EnumSetQueue.push(StatementContext.IN_FUNCTION));
+    consume(RIGHT_BRACE, "Expect '}' after function body");
+    return new Expr.Function(keyword, name, args, body);
+  }
+
   /** Parse a left-associative binary operation */
-  private Expr binaryOp(Supplier<Expr> target, TokenType... opTokens) {
-    return binaryOp(target, opTokens, EMPTY_TYPES);
+  private Expr binaryOp(Function<EnumSetQueue<ExpressionContext>, Expr> target, EnumSetQueue<ExpressionContext> context, TokenType... opTokens) {
+    return binaryOp(target, context, opTokens, EMPTY_TYPES);
   }
 
   /** Parse a left-associative binary operator where some of the operators are also unary operators */
-  private Expr binaryOp(Supplier<Expr> target, TokenType[] unambiguousTokens, TokenType[] ambiguousTokens) {
+  private Expr binaryOp(Function<EnumSetQueue<ExpressionContext>, Expr> target, EnumSetQueue<ExpressionContext> context, TokenType[] unambiguousTokens, TokenType[] ambiguousTokens) {
     if (match(unambiguousTokens)) {
       // Error: Leading binary operator
       var operator = previous();
-      var _right = target.get(); // Go ahead and attempt to recover
+      var _right = target.apply(context); // Go ahead and attempt to recover
       throw error(operator, "Binary operator missing left-hand side");
     }
-    var expr = target.get();
+    var expr = target.apply(context);
     while (match(unambiguousTokens) || match(ambiguousTokens)) {
       Token operator = previous();
-      Expr right = target.get();
+      Expr right = target.apply(context);
       expr = new Expr.Binary(expr, operator, right);
     }
     return expr;
@@ -319,6 +437,7 @@ class Parser {
     return false;
   }
 
+  /** Check the type of the next token */
   private boolean check(TokenType type) {
     if (isAtEnd()) return false;
     return peek().type() == type;

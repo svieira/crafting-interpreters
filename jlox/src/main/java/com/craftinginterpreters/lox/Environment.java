@@ -26,6 +26,10 @@ class Environment {
             "Undefined variable '" + name.lexeme() + "'.");
   }
 
+  void define(Token name, Object value) {
+    values.put(name.lexeme(), value);
+  }
+
   void define(String name, Object value) {
     values.put(name, value);
   }

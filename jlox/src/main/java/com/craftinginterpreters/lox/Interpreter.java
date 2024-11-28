@@ -1,11 +1,13 @@
 package com.craftinginterpreters.lox;
 
 import java.io.PrintStream;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
+public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
+  final Environment globals = new Environment();
   private final Environment environment;
   private final PrintStream printTarget;
 
@@ -24,6 +26,22 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   Interpreter(Environment environment, PrintStream printTarget) {
     this.environment = environment;
     this.printTarget = printTarget;
+    this.globals.define("clock", new LoxCallable() {
+      @Override
+      public Object call(Interpreter interpreter, List<Object> arguments) {
+        return System.currentTimeMillis() / 1_000d;
+      }
+
+      @Override
+      public int arity() {
+        return 0;
+      }
+
+      @Override
+      public String toString() {
+        return "<native fn>";
+      }
+    });
   }
 
   void interpret(Program program, Consumer<EvaluationError> handler) {
@@ -43,7 +61,7 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
       value = evaluate(stmt.initializer());
     }
 
-    environment.define(stmt.name().lexeme(), value);
+    environment.define(stmt.name(), value);
     return null;
   }
 
@@ -81,6 +99,23 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   }
 
   @Override
+  public Void visit(Stmt.Function function) {
+    var f = new LoxFunction(function, environment);
+    environment.define(function.name(), f);
+    return null;
+  }
+
+  @Override
+  public Void visit(Stmt.Return returnStmt) {
+    var expr = returnStmt.value();
+    Object value = null;
+    if (expr != null) {
+      value = evaluate(expr);
+    }
+    throw new ReturnSignal(value);
+  }
+
+  @Override
   public Void visit(Stmt.Print stmt) {
     Object value = evaluate(stmt.expression());
     printTarget.println(stringify(value));
@@ -103,7 +138,7 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   public Object visit(Expr.Assignment assignment) {
     var result = evaluate(assignment.value());
     environment.assign(assignment.name(), result);
-    return null;
+    return result;
   }
 
   @Override
@@ -190,6 +225,36 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   }
 
   @Override
+  public Object visit(Expr.Call call) {
+    Object callee = evaluate(call.callee());
+
+    List<Object> arguments = new ArrayList<>();
+    for (Expr argument : call.arguments()) {
+      arguments.add(evaluate(argument));
+    }
+
+    if (callee instanceof LoxCallable function) {
+      if (function.arity() != arguments.size()) {
+        throw new EvaluationError(
+                call.paren(),
+                "Expected " + function.arity() + " arguments but got " + arguments.size() + "."
+        );
+      }
+      return function.call(this, arguments);
+    } else {
+      throw new EvaluationError(call.paren(), "Can only call functions and classes");
+    }
+  }
+
+  @Override
+  public Object visit(Expr.Function f) {
+    var fun = new Stmt.Function(f.name(), f.arguments(), f.body());
+    var env = new Environment(environment);
+    env.define(f.name(), fun);
+    return new LoxFunction(fun, env);
+  }
+
+  @Override
   public Object visit(Expr.Grouping grouping) {
     return evaluate(grouping.expression());
   }
@@ -213,7 +278,7 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     stmt.accept(this);
   }
 
-  private void executeBlock(List<Stmt> statements, Environment environment) {
+  void executeBlock(List<Stmt> statements, Environment environment) {
     for (Stmt statement : statements) {
       // Look ma, no mutation!
       // Yes child, but that's a lot of allocation!

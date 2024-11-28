@@ -7,15 +7,20 @@ import java.util.List;
  * <pre><code>
  * program        → declaration* EOF ;
  *
- * declaration    → varDecl
+ * declaration    → funDecl
+ *                | varDecl
  *                | statement ;
+ *
+ * funDecl        → "fun" function ;
+ * function       → IDENTIFIER "(" parameters? ")" block ;
  *
  * varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
  *
  * statement      → exprStmt
  *                | forStmt
  *                | ifStmt
- *                | printStmt ;
+ *                | printStmt
+ *                | returnStmt
  *                | whileStmt
  *                | block ;
  *
@@ -32,6 +37,7 @@ import java.util.List;
  *
  * printStmt      → "print" expression ";" ;
  * loopCtrlStmt   → ("break" | "continue") ";" ;
+ * returnStmt     → "return" expression? ";" ;
  *
  * block          → "{" declaration* "}" ;
  * </code></pre>
@@ -47,9 +53,12 @@ interface Stmt {
     R visit(If anIf);
     R visit(While aWhile);
     R visit(LoopControl loopControl);
+    R visit(Function function);
+    R visit(Return returnStmt);
     default R visit(Unparsable errorNode) {
       throw new UnsupportedOperationException("Did not expect to have to handle unparsable statements");
     }
+
   }
 
   <R> R accept(Visitor<R> visitor);
@@ -72,6 +81,16 @@ interface Stmt {
   record LoopControl(Token token, LoopControl.Type type) implements Stmt {
     enum Type { BREAK, CONTINUE }
 
+    public <R> R accept(Visitor<R> visitor) {
+      return visitor.visit(this);
+    }
+  }
+  record Function(Token name, List<Token> params, List<Stmt> body) implements Stmt {
+    public <R> R accept(Visitor<R> visitor) {
+      return visitor.visit(this);
+    }
+  }
+  record Return(Token keyword, Expr value) implements Stmt {
     public <R> R accept(Visitor<R> visitor) {
       return visitor.visit(this);
     }

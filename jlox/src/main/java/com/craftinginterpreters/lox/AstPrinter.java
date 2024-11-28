@@ -58,6 +58,18 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
   }
 
   @Override
+  public String visit(Expr.Call call) {
+    return parenthesize(call.callee().accept(this), call.arguments().toArray(new Expr[0]));
+  }
+
+  @Override
+  public String visit(Expr.Function f) {
+    return "(λ" + f.name().lexeme() + " [" + f.arguments().stream().map(Token::lexeme).collect(Collectors.joining(" ")) + "]\n"
+            + f.body().stream().map(s -> s.accept(new AstPrinter(indent()))).collect(Collectors.joining("\n"))
+            + ")";
+  }
+
+  @Override
   public String visit(Expr.Unparseable unparsable) {
     return "($unparsable " + unparsable + ")";
   }
@@ -83,6 +95,20 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
   @Override
   public String visit(Stmt.Print print) {
     return indent + "[print " + print.expression().accept(this) + "]";
+  }
+
+  @Override
+  public String visit(Stmt.Function function) {
+    return indent + "[defun " + function.name().lexeme()
+            + " [" + function.params().stream().map(Token::lexeme).collect(Collectors.joining(", "))
+            + "]"
+            + function.body().stream().map(s -> s.accept(new AstPrinter(indent()))).collect(Collectors.joining("\n"))
+            + "]";
+  }
+
+  @Override
+  public String visit(Stmt.Return returnStmt) {
+    return indent + "[return " + returnStmt.value().accept(new AstPrinter(indent())) + "]";
   }
 
   @Override

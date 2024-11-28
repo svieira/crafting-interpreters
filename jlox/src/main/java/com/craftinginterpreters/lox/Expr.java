@@ -1,5 +1,7 @@
 package com.craftinginterpreters.lox;
 
+import java.util.List;
+
 /**
  * <p>The AST for the expression portion of the Lox grammar:</p>
  * <pre><code>
@@ -16,9 +18,12 @@ package com.craftinginterpreters.lox;
  * factor         → unary ( ( "/" | "*" ) unary )* ;
  * unary          → ( "!" | "-" ) unary
  *                | coalesce ;
- * coalesce       → primary ( "??" primary )* ;
+ * coalesce       → call ( "??" call )* ;
+ * call           → primary ( "(" arguments? ")" )* ;
+ * arguments      → expression ( "," expression )* ;
  * primary        → NUMBER | STRING | "true" | "false" | "nil"
  *                | "(" expression ")"
+ *                | "fun" IDENTIFIER? "(" arguments ")" "{" declaration* "}"
  *                | IDENTIFIER ;
  * </code></pre>
 
@@ -34,10 +39,11 @@ non-sealed interface Expr extends ParseResult {
     R visit(Literal literal);
     R visit(Variable variable);
     R visit(Assignment assignment);
+    R visit(Call call);
+    R visit(Function call);
     default R visit(Unparseable unparseable) {
       throw new UnsupportedOperationException("Did not expect to have to handle an unparsable expression");
     }
-
   }
 
   <R> R accept(Visitor<R> visitor);
@@ -78,6 +84,16 @@ non-sealed interface Expr extends ParseResult {
     }
   }
   record Assignment(Token name, Expr value) implements Expr {
+    public <R> R accept(Visitor<R> visitor) {
+      return visitor.visit(this);
+    }
+  }
+  record Function(Token keyword, Token name, List<Token> arguments, List<Stmt> body) implements Expr {
+    public <R> R accept(Visitor<R> visitor) {
+      return visitor.visit(this);
+    }
+  }
+  record Call(Expr callee, Token paren, List<Expr> arguments) implements Expr {
     public <R> R accept(Visitor<R> visitor) {
       return visitor.visit(this);
     }

@@ -38,4 +38,8 @@ public class EnumSetQueue<T extends Enum<T>> {
   public boolean contains(T context) {
     return head.contains(context) || tail != null && tail.contains(context);
   }
+
+  public boolean containsAtHead(T context) {
+    return head.contains(context);
+  }
 }

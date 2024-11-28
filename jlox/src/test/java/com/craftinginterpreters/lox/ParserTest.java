@@ -24,7 +24,9 @@ class ParserTest {
       testCase("precedence", "a ? b ? c : d : e", "(? a (: (? b (: c d)) e))"),
       testCase("precedence", "nil and false or true", "(or (and nil false) true)"),
       testCase("precedence", "first and second ? x : y", "(and first (? second (: x y)))"),
-      testCase("unary", "-3", "(- 3.0)")
+      testCase("unary", "-3", "(- 3.0)"),
+      testCase("exprStatement", "1 + 1;", "\n[void (+ 1.0 1.0)]"),
+      testCase("call", "someThing();", "\n[void (someThing)]")
     );
   }
 
@@ -54,7 +56,7 @@ class ParserTest {
       testCase("binaryOps", "+ 2 + 3", "Binary operator missing left-hand side"),
       testCase("ternary", "? missing : something", "Ternary operator missing test condition"),
       testCase("ternary", "missing ? something", "Expecting COLON following QUESTION_MARK"),
-      testCase("ternary", "missing : something", "Failed to parse (next viable token is [1:19] IDENTIFIER something)"),
+      testCase("ternary", "missing : something", "Failed to parse (next viable token is [1:19] IDENTIFIER something) due to Expect ';' after expression."),
       testCase("ternary", ": lots_missing", "Unexpected COLON. Are you missing a QUESTION_MARK?"),
       testCase("elvis", "?: missing_test", "Ternary operator missing test condition"),
       testCase("lex",
@@ -63,7 +65,8 @@ class ParserTest {
               """, "Unterminated string."),
       testCase("lex", "/* it's unclosed you see ...", "Unclosed block comment detected"),
       testCase("lex", "✘_is_not_valid_id", "Unexpected character: '✘' (HEAVY BALLOT X)"),
-      testCase("loops", "break;", "Unable to handle token of type BREAK")
+      testCase("controlFlow", "break;", "Unable to handle token of type BREAK"),
+      testCase("controlFlow", "return;", "Unable to handle token of type RETURN")
     );
   }
 
