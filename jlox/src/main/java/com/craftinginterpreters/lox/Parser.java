@@ -236,8 +236,8 @@ class Parser {
     if (match(EQUAL)) {
       var equals = previous();
       var rightHandSide = assignment(context);
-      if (leftHandSide instanceof Expr.Variable variable) {
-        return new Expr.Assignment(variable.name(), rightHandSide);
+      if (leftHandSide instanceof Expr.Variable(Token name)) {
+        return new Expr.Assignment(name, rightHandSide);
       }
       throw error(equals, "Invalid assignment target");
     }
