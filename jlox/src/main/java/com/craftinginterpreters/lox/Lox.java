@@ -62,6 +62,7 @@ public class Lox {
       String line = reader.readLine();
       if (line == null || line.isBlank() || line.trim().equals(":exit")) break;
       var lineAndModes = directive(line, lastLine, lastModes);
+      // If we reused the line then we have a mode change by itself.
       lastLine = lineAndModes.line == lastLine ? lastLine : lineAndModes.line;
       lastModes = lineAndModes.modes == lastModes ? lastModes : lineAndModes.modes;
       run(lineAndModes.line, lineAndModes.modes);
@@ -123,6 +124,12 @@ public class Lox {
           program.accept(new AstPrinter()).forEach(System.out::println);
         }
         if (modes.contains(Mode.EVALUATE)) {
+          var resolver = new Resolver(INTERPRETER);
+          resolver.resolve(program);
+
+          // Stop if there was a resolution error.
+          if (hadError) return;
+
           INTERPRETER.interpret(program, Lox::runtimeError);
         }
       }

@@ -88,7 +88,7 @@ non-sealed interface Expr extends ParseResult {
       return visitor.visit(this);
     }
   }
-  record Function(Token keyword, Token name, List<Token> arguments, List<Stmt> body) implements Expr {
+  record Function(Token keyword, Token name, List<Token> arguments, List<Stmt> body, boolean isAnonymous) implements Expr {
     public <R> R accept(Visitor<R> visitor) {
       return visitor.visit(this);
     }

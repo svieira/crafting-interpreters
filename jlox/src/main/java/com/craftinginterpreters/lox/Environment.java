@@ -48,4 +48,26 @@ class Environment {
     throw new EvaluationError(name,
             "Cannot assign to undefined variable '" + name.lexeme() + "'");
   }
+
+  public Object getAt(int distance, String name) {
+    return ancestor(distance).values.get(name);
+  }
+
+  Environment ancestor(int distance) {
+    Environment environment = this;
+    for (int i = 0; i < distance; i++) {
+      environment = environment.enclosing;
+      if (environment == null) break;
+    }
+
+    return environment;
+  }
+
+  public void assignAt(int distance, Token name, Object result) {
+    var ancestor = ancestor(distance);
+    if (ancestor == null) {
+      throw new NullPointerException("Expected to find enclosing scope at " + distance + " from " + name);
+    }
+    ancestor.values.put(name.lexeme(), result);
+  }
 }

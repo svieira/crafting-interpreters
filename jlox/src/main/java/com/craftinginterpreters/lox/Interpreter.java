@@ -1,18 +1,16 @@
 package com.craftinginterpreters.lox;
 
 import java.io.PrintStream;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Consumer;
 
 public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
-  final Environment globals = new Environment();
+  private final Map<Expr, Integer> locals;
   private final Environment environment;
   private final PrintStream printTarget;
 
   public Interpreter() {
-    this(new Environment(), System.out);
+    this(new Environment(new GlobalEnvironment()), System.out);
   }
 
   Interpreter(Environment environment) {
@@ -20,28 +18,17 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   }
 
   Interpreter(PrintStream printTarget) {
-    this(new Environment(), printTarget);
+    this(new Environment(new GlobalEnvironment()), printTarget);
   }
 
   Interpreter(Environment environment, PrintStream printTarget) {
+    this(environment, printTarget, new HashMap<>());
+  }
+
+  Interpreter(Environment environment, PrintStream printTarget, Map<Expr, Integer> locals) {
     this.environment = environment;
+    this.locals = locals;
     this.printTarget = printTarget;
-    this.globals.define("clock", new LoxCallable() {
-      @Override
-      public Object call(Interpreter interpreter, List<Object> arguments) {
-        return System.currentTimeMillis() / 1_000d;
-      }
-
-      @Override
-      public int arity() {
-        return 0;
-      }
-
-      @Override
-      public String toString() {
-        return "<native fn>";
-      }
-    });
   }
 
   void interpret(Program program, Consumer<EvaluationError> handler) {
@@ -137,7 +124,12 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   @Override
   public Object visit(Expr.Assignment assignment) {
     var result = evaluate(assignment.value());
-    environment.assign(assignment.name(), result);
+    Integer distance = locals.get(assignment);
+    if (distance != null) {
+      environment.assignAt(distance, assignment.name(), result);
+    } else {
+      environment.assign(assignment.name(), result);
+    }
     return result;
   }
 
@@ -266,10 +258,19 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
   @Override
   public Object visit(Expr.Variable variable) {
-    return environment.get(variable.name());
+    return lookupVariable(variable.name(), variable);
   }
 
   // Language semantics and operations!
+  private Object lookupVariable(Token name, Expr.Variable variable) {
+    Integer distance = locals.get(variable);
+    if (distance != null) {
+      return environment.getAt(distance, name.lexeme());
+    } else {
+      return environment.get(name);
+    }
+  }
+
   private Object evaluate(Expr expression) {
     return expression.accept(this);
   }
@@ -282,7 +283,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     for (Stmt statement : statements) {
       // Look ma, no mutation!
       // Yes child, but that's a lot of allocation!
-      statement.accept(new Interpreter(environment, printTarget));
+      statement.accept(new Interpreter(environment, printTarget, locals));
     }
   }
 
@@ -324,6 +325,10 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
   private static EvaluationError fail(Token location, String failureMessage) {
     throw new EvaluationError(location, failureMessage);
+  }
+
+  public void resolve(Expr expr, int depth) {
+    locals.put(expr, depth);
   }
 
   private static final class LoopControlSignal extends RuntimeException {

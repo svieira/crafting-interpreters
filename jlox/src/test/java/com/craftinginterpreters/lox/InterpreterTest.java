@@ -95,7 +95,10 @@ thrice(fun (a) {
             var env = new Environment();
             var prints = new ByteArrayOutputStream();
             var output = new PrintStream(prints, true);
-            new Interpreter(env, output).interpret(program, Assertions::assertNull);
+            var interpreter = new Interpreter(env, output);
+            var resolver = new Resolver(interpreter);
+            resolver.resolve(program);
+            interpreter.interpret(program, Assertions::assertNull);
             assertEquals(stdOut, prints.toString(StandardCharsets.UTF_8));
           }
         }

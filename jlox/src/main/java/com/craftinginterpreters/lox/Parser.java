@@ -388,11 +388,15 @@ class Parser {
   private Expr function(EnumSetQueue<ExpressionContext> context) {
     var keyword = previous();
     var token = peek();
-    var name = new Token(IDENTIFIER, "<anonymous>", null, keyword.line(), keyword.column());
+    Token name;
+    boolean isAnonymous = true;
     if (token.type() == IDENTIFIER) {
       name = token;
       advance();
       token = peek();
+      isAnonymous = false;
+    } else {
+      name = new Token(IDENTIFIER, "<anonymous>", null, keyword.line(), keyword.column());
     }
     if (!token.type().equals(LEFT_PAREN)) {
       throw error(token, "Expected '(' after function keyword for function expression.");
@@ -401,7 +405,7 @@ class Parser {
     consume(LEFT_BRACE, "Expect '{' after function header");
     var body = program(EnumSetQueue.push(StatementContext.IN_FUNCTION));
     consume(RIGHT_BRACE, "Expect '}' after function body");
-    return new Expr.Function(keyword, name, args, body);
+    return new Expr.Function(keyword, name, args, body, isAnonymous);
   }
 
   /** Parse a left-associative binary operation */
