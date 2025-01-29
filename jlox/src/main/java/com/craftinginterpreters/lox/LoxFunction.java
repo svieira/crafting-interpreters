@@ -6,7 +6,7 @@ public class LoxFunction implements LoxCallable {
   private final Stmt.Function declaration;
   private final Environment scope;
 
-  public LoxFunction(Stmt.Function declaration, Environment scope) {
+  LoxFunction(Stmt.Function declaration, Environment scope) {
     this.declaration = declaration;
     this.scope = scope;
   }

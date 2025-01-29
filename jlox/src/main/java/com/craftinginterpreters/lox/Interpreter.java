@@ -5,7 +5,7 @@ import java.util.*;
 import java.util.function.Consumer;
 
 public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
-  private final Map<Expr, Integer> locals;
+  private final Map<Expr, Resolver.Coordinates> locals;
   private final Environment environment;
   private final PrintStream printTarget;
 
@@ -13,19 +13,11 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     this(new Environment(new GlobalEnvironment()), System.out);
   }
 
-  Interpreter(Environment environment) {
-    this(environment, System.out);
-  }
-
-  Interpreter(PrintStream printTarget) {
-    this(new Environment(new GlobalEnvironment()), printTarget);
-  }
-
   Interpreter(Environment environment, PrintStream printTarget) {
     this(environment, printTarget, new HashMap<>());
   }
 
-  Interpreter(Environment environment, PrintStream printTarget, Map<Expr, Integer> locals) {
+  Interpreter(Environment environment, PrintStream printTarget, Map<Expr, Resolver.Coordinates> locals) {
     this.environment = environment;
     this.locals = locals;
     this.printTarget = printTarget;
@@ -124,7 +116,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   @Override
   public Object visit(Expr.Assignment assignment) {
     var result = evaluate(assignment.value());
-    Integer distance = locals.get(assignment);
+    Resolver.Coordinates distance = locals.get(assignment);
     if (distance != null) {
       environment.assignAt(distance, assignment.name(), result);
     } else {
@@ -242,8 +234,9 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   public Object visit(Expr.Function f) {
     var fun = new Stmt.Function(f.name(), f.arguments(), f.body());
     var env = new Environment(environment);
-    env.define(f.name(), fun);
-    return new LoxFunction(fun, env);
+    var func = new LoxFunction(fun, env);
+    env.define(f.name(), func);
+    return func;
   }
 
   @Override
@@ -263,9 +256,9 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
   // Language semantics and operations!
   private Object lookupVariable(Token name, Expr.Variable variable) {
-    Integer distance = locals.get(variable);
+    Resolver.Coordinates distance = locals.get(variable);
     if (distance != null) {
-      return environment.getAt(distance, name.lexeme());
+      return environment.getAt(distance, name);
     } else {
       return environment.get(name);
     }
@@ -327,7 +320,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     throw new EvaluationError(location, failureMessage);
   }
 
-  public void resolve(Expr expr, int depth) {
+  public void resolve(Expr expr, Resolver.Coordinates depth) {
     locals.put(expr, depth);
   }
 

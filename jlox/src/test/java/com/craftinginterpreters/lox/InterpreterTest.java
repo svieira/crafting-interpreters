@@ -77,6 +77,51 @@ thrice(fun (a) {
 """, "1\n2\n3\n");
   }
 
+  @Test
+  void testVariableAssignment() {
+    assertPrints("""
+    var x = 1;
+    print x;
+    """, "1\n");
+  }
+
+  @Test
+  void testVariableScope() {
+    assertPrints("""
+    var x = 1;
+    fun closure() {
+      print x;
+    }
+    closure();
+    """, "1\n");
+  }
+
+  @Test
+  void testClosureVariableScope() {
+    assertPrints("""
+    fun outer() {
+      var x = 1;
+      fun closure() {
+        print x;
+      }
+      return closure;
+    }
+    outer()();
+    """, "1\n");
+  }
+
+  @Test
+  void testClosureAsAssignment() {
+    assertPrints("""
+    var test = fun named() {
+      print test;
+      print named;
+      print test == named;
+    };
+    test();
+    """, "<fn named>\n<fn named>\ntrue\n");
+  }
+
   void assertPrints(String input, String stdOut) {
     switch(new Scanner(input).scanTokens()) {
       case Scanner.LexError lexError -> {

@@ -6,19 +6,46 @@ import java.util.Map;
 import java.util.Stack;
 
 class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
+  record Coordinates(int scope, int id) {}
+  private static final class VarState {
+    boolean defined;
+    final int id;
+    VarState(int id) {
+      this.id = id;
+    }
+
+    public VarState(int id, boolean defined) {
+      this.id = id;
+      this.defined = defined;
+    }
+  }
+  private static final class State {
+    private Expr expr;
+    private Stmt stmt;
+    int id = 0;
+    Map<String, VarState> variables = new HashMap<>();
+    State() {}
+    State(Stmt stmt) {
+      this.stmt = stmt;
+    }
+    State(Expr expr) {
+      this.expr = expr;
+    }
+  }
+
   private final Interpreter interpreter;
-  private final Stack<Map<String, Boolean>> scopes = new Stack<>();
+  private final Stack<State> scopes = new Stack<>();
 
   Resolver(Interpreter interpreter) {
     this.interpreter = interpreter;
-    this.scopes.push(new HashMap<>()); // The top-level scope
+    this.scopes.push(new State()); // The top-level scope
   }
 
   @Override
   public Void visit(Stmt.Block stmt) {
-    beginScope();
-    resolve(stmt.statements());
-    endScope();
+    try(var s = scope(stmt)) {
+      resolve(stmt.statements());
+    }
     return null;
   }
 
@@ -34,10 +61,14 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
 
   @Override
   public Void visit(Expr.Variable variable) {
-    if (!scopes.isEmpty() &&
-            scopes.peek().get(variable.name().lexeme()) == Boolean.FALSE) {
-      Lox.error(variable.name(),
+    if (!scopes.isEmpty()) {
+      var varName = variable.name().lexeme();
+      var variableReference = scopes.peek().variables.get(varName);
+
+      if (variableReference != null && variableReference.defined == Boolean.FALSE) {
+        Lox.error(variable.name(),
               "Can't read local variable in its own initializer.");
+      }
     }
 
     resolveLocal(variable, variable.name());
@@ -154,8 +185,8 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
 
   private void resolveLocal(Expr expr, Token name) {
     for (int i = scopes.size() - 1; i >= 0; i--) {
-      if (scopes.get(i).containsKey(name.lexeme())) {
-        interpreter.resolve(expr, scopes.size() - 1 - i);
+      if (scopes.get(i).variables.containsKey(name.lexeme())) {
+        interpreter.resolve(expr, new Coordinates(scopes.size() - 1 - i, scopes.get(i).variables.get(name.lexeme()).id));
         return;
       }
     }
@@ -164,16 +195,22 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
   private void declare(Token name) {
     if (scopes.isEmpty()) return;
 
-    Map<String, Boolean> scope = scopes.peek();
-    if (scope.containsKey(name.lexeme())) {
+    var scope = scopes.peek();
+    if (scope.variables.containsKey(name.lexeme())) {
       Lox.error(name, "Already a variable with this name in this scope.");
     }
-    scope.put(name.lexeme(), false);
+    scope.variables.put(name.lexeme(), new VarState(scope.id++));
   }
 
   private void define(Token name) {
     if (scopes.isEmpty()) return;
-    scopes.peek().put(name.lexeme(), true);
+    scopes.peek().variables.compute(name.lexeme(), (key,value) -> {
+      if (value == null) {
+        return new VarState(scopes.peek().id++, true);
+      }
+      value.defined = true;
+      return value;
+    });
   }
 
   void resolve(List<Stmt> statements) {
@@ -191,34 +228,40 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
   }
 
   private void resolveFunction(Stmt.Function function) {
-    beginScope();
-    for (Token param : function.params()) {
-      declare(param);
-      define(param);
+    try(var s = scope(function)) {
+      for (Token param : function.params()) {
+        declare(param);
+        define(param);
+      }
+      resolve(function.body());
     }
-    resolve(function.body());
-    endScope();
   }
 
   private void resolveFunction(Expr.Function function) {
-    beginScope();
-    if (!function.isAnonymous()) {
-      declare(function.name());
-      define(function.name());
+    try(var s = scope(function)) {
+      if (!function.isAnonymous()) {
+        declare(function.name());
+        define(function.name());
+      }
+      for (Token param : function.arguments()) {
+        declare(param);
+        define(param);
+      }
+      resolve(function.body());
     }
-    for (Token param : function.arguments()) {
-      declare(param);
-      define(param);
-    }
-    resolve(function.body());
-    endScope();
   }
 
-  private void beginScope() {
-    scopes.push(new HashMap<>());
+  private ScopeManager scope(Stmt statement) {
+    scopes.push(new State(statement));
+    return scopes::pop;
   }
 
-  private void endScope() {
-    scopes.pop();
+  private ScopeManager scope(Expr expression) {
+    scopes.push(new State(expression));
+    return scopes::pop;
+  }
+
+  private interface ScopeManager extends AutoCloseable {
+    void close();
   }
 }
