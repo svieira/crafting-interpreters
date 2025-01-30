@@ -45,6 +45,18 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   }
 
   @Override
+  public Void visit(Stmt.ClassDeclaration classDeclaration) {
+    environment.define(classDeclaration.name(), null);
+    var methods = new HashMap<String, LoxFunction>(classDeclaration.methods().size());
+    for (var method : classDeclaration.methods()) {
+      methods.put(method.name().lexeme(), LoxFunction.method(method, environment));
+    }
+    var klass = new LoxClass(classDeclaration.name().lexeme(), methods);
+    environment.assign(classDeclaration.name(), klass);
+    return null;
+  }
+
+  @Override
   public Void visit(Stmt.If stmt) {
     if (isTruthy(evaluate(stmt.condition()))) {
       execute(stmt.whenTrue());
@@ -231,6 +243,26 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   }
 
   @Override
+  public Object visit(Expr.Select select) {
+    var target = evaluate(select.target());
+    if (target instanceof LoxInstance instance) {
+      return instance.get(select.field());
+    }
+    throw new EvaluationError(select.field(), "Only instances have properties");
+  }
+
+  @Override
+  public Object visit(Expr.Update update) {
+    var target = evaluate(update.target());
+    if (target instanceof LoxInstance instance) {
+      var value = evaluate(update.value());
+      instance.set(update.field(), value);
+      return value;
+    }
+    throw new EvaluationError(update.field(), "Only instances have fields");
+  }
+
+  @Override
   public Object visit(Expr.Function f) {
     var fun = new Stmt.Function(f.name(), f.arguments(), f.body());
     var env = new Environment(environment);
@@ -254,8 +286,13 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     return lookupVariable(variable.name(), variable);
   }
 
+  @Override
+  public Object visit(Expr.This the) {
+    return lookupVariable(the.keyword(), the);
+  }
+
   // Language semantics and operations!
-  private Object lookupVariable(Token name, Expr.Variable variable) {
+  private Object lookupVariable(Token name, Expr variable) {
     Resolver.Coordinates distance = locals.get(variable);
     if (distance != null) {
       return environment.getAt(distance, name);

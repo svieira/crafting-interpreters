@@ -66,7 +66,9 @@ class ParserTest {
       testCase("lex", "/* it's unclosed you see ...", "Unclosed block comment detected"),
       testCase("lex", "✘_is_not_valid_id", "Unexpected character: '✘' (HEAVY BALLOT X)"),
       testCase("controlFlow", "break;", "Unable to handle token of type BREAK"),
-      testCase("controlFlow", "return;", "Unable to handle token of type RETURN")
+      testCase("controlFlow", "return;", "Unable to handle token of type RETURN"),
+      testCase("scopedKeywords", "this;", "'this' used outside of a class declaration"),
+      testCase("scopedKeywords", "print 1; class Test { init() { return 123; } }", "Failed to parse (next viable token is [1:42] SEMICOLON ;) due to Cannot return value from init")
     );
   }
 

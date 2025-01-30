@@ -15,8 +15,8 @@ class Parser {
   private final List<Token> tokens;
   private int current = 0;
 
-  private enum StatementContext { IN_FUNCTION, IN_LOOP; }
-  private enum ExpressionContext { IN_CALL; }
+  private enum StatementContext { IN_FUNCTION, IN_INIT, IN_LOOP, IN_CLASS_DECLARATION; }
+  private enum ExpressionContext { IN_CALL, IN_CLASS_DECLARATION; }
 
   Parser(List<Token> tokens) {
     this.tokens = tokens;
@@ -67,11 +67,11 @@ class Parser {
     } catch (ParseError e) {
       var initialToken = peek();
       synchronize();
-      throw error(initialToken, "Failed to parse (next viable token is " + previous() + ") due to " + e.message());
+      throw new ParseError(initialToken, "Failed to parse (next viable token is " + previous() + ") due to " + e.message(), e);
     }
   }
 
-  private Stmt callable(String callableType, EnumSetQueue<StatementContext> context) {
+  private Stmt.Function callable(String callableType, EnumSetQueue<StatementContext> context) {
     var name = consume(IDENTIFIER, "Expected " + callableType + " name");
     consume(LEFT_PAREN, "Expected '(' after " + callableType + " name.");
     var parameters = new ArrayList<Token>();
@@ -86,7 +86,14 @@ class Parser {
     }
     consume(RIGHT_PAREN, "Expect ')' after parameters.");
     consume(LEFT_BRACE, "Expect '{' before " + callableType + " body.");
-    List<Stmt> body = block(EnumSetQueue.push(context, StatementContext.IN_FUNCTION));
+
+    if (context.containsAtHead(StatementContext.IN_CLASS_DECLARATION) && name.lexeme().equals("init")) {
+      context = EnumSetQueue.push(context, StatementContext.IN_FUNCTION, StatementContext.IN_INIT);
+    } else {
+      context = EnumSetQueue.push(context, StatementContext.IN_FUNCTION);
+    }
+
+    List<Stmt> body = block(context);
     return new Stmt.Function(name, parameters, body);
   }
 
@@ -95,7 +102,7 @@ class Parser {
 
     Expr initializer = null;
     if (match(EQUAL)) {
-      initializer = expression();
+      initializer = expression(fromStatementContext(context));
     }
 
     consume(SEMICOLON, "Expect ';' after variable declaration.");
@@ -105,13 +112,25 @@ class Parser {
   private Stmt statement(EnumSetQueue<StatementContext> context) {
     if (match(FOR)) return forStatement(context);
     if (match(IF)) return ifStatement(context);
-    if (match(PRINT)) return printStatement();
+    if (match(PRINT)) return printStatement(context);
     if (match(RETURN)) return returnStatement(context);
     if (match(WHILE)) return whileStatement(context);
+    if (match(CLASS)) return classDeclaration(context);
     if (match(LEFT_BRACE)) return new Stmt.Block(block(context));
     if (match(BREAK, CONTINUE)) return loopControl(context);
 
-    return expressionStatement();
+    return expressionStatement(context);
+  }
+
+  private Stmt classDeclaration(EnumSetQueue<StatementContext> context) {
+    var name = consume(IDENTIFIER, "Expect class name.");
+    consume(LEFT_BRACE, "Expect '{' before class body.");
+    var methods = new ArrayList<Stmt.Function>();
+    while (!check(RIGHT_BRACE) && !isAtEnd()) {
+      methods.add(callable("method", EnumSetQueue.push(context, StatementContext.IN_CLASS_DECLARATION)));
+    }
+    consume(RIGHT_BRACE, "Expect '}' after class body.");
+    return new Stmt.ClassDeclaration(name, methods);
   }
 
   private Stmt forStatement(EnumSetQueue<StatementContext> context) {
@@ -123,12 +142,12 @@ class Parser {
     } else if (match(VAR)) {
       initializer = varDeclaration(context);
     } else {
-      initializer = expressionStatement();
+      initializer = expressionStatement(context);
     }
-    Expr condition = !check(SEMICOLON) ? expression() : new Expr.Literal(true);
+    Expr condition = !check(SEMICOLON) ? expression(fromStatementContext(context)) : new Expr.Literal(true);
     consume(SEMICOLON, "Expect ';' after loop condition.");
 
-    Expr increment = !check(RIGHT_PAREN) ? expression() : null;
+    Expr increment = !check(RIGHT_PAREN) ? expression(fromStatementContext(context)) : null;
     consume(RIGHT_PAREN, "Expect ')' after for clauses.");
     Stmt body = statement(EnumSetQueue.push(context, StatementContext.IN_LOOP));
 
@@ -147,7 +166,7 @@ class Parser {
 
   private Stmt whileStatement(EnumSetQueue<StatementContext> context) {
     consume(LEFT_PAREN, "Expect '(' after 'while'.");
-    Expr condition = expression();
+    Expr condition = expression(fromStatementContext(context));
     consume(RIGHT_PAREN, "Expect ')' after while condition.");
     Stmt body = statement(EnumSetQueue.push(context, StatementContext.IN_LOOP));
     return new Stmt.While(condition, body);
@@ -155,7 +174,7 @@ class Parser {
 
   private Stmt ifStatement(EnumSetQueue<StatementContext> context) {
     consume(LEFT_PAREN, "Expect '(' after 'if'.");
-    Expr condition = expression();
+    Expr condition = expression(fromStatementContext(context));
     consume(RIGHT_PAREN, "Expect ')' after if condition.");
 
     Stmt whenTrue = statement(context);
@@ -194,8 +213,8 @@ class Parser {
     return statements;
   }
 
-  private Stmt printStatement() {
-    Expr value = expression();
+  private Stmt printStatement(EnumSetQueue<StatementContext> context) {
+    Expr value = expression(fromStatementContext(context));
     consume(SEMICOLON, "Expect ';' after value.");
     return new Stmt.Print(value);
   }
@@ -207,20 +226,33 @@ class Parser {
     }
     Expr value = null;
     if (!check(SEMICOLON)) {
-      value = expression();
+      value = expression(fromStatementContext(context));
+    }
+
+    if (value != null && context.containsAtHead(StatementContext.IN_INIT)) {
+      throw error(keyword, "Cannot return value from init");
     }
 
     consume(SEMICOLON, "Expect ';' after return value.");
     return new Stmt.Return(keyword, value);
   }
 
-  private Stmt expressionStatement() {
-    Expr expr = expression();
+  private Stmt expressionStatement(EnumSetQueue<StatementContext> context) {
+    var exprContext = fromStatementContext(context);
+    Expr expr = expression(exprContext);
     consume(SEMICOLON, "Expect ';' after expression.");
     if (expr instanceof Expr.Function) {
       throw error(previous(), "Function expression in statement position");
     }
     return new Stmt.Expression(expr);
+  }
+
+  private static EnumSetQueue<ExpressionContext> fromStatementContext(EnumSetQueue<StatementContext> context) {
+    var exprContext = EnumSetQueue.empty(ExpressionContext.class);
+    if (context.contains(StatementContext.IN_CLASS_DECLARATION)) {
+      exprContext = EnumSetQueue.push(exprContext, ExpressionContext.IN_CLASS_DECLARATION);
+    }
+    return exprContext;
   }
 
   private Expr expression() {
@@ -238,6 +270,8 @@ class Parser {
       var rightHandSide = assignment(context);
       if (leftHandSide instanceof Expr.Variable(Token name)) {
         return new Expr.Assignment(name, rightHandSide);
+      } else if (leftHandSide instanceof Expr.Select(Expr target, Token field)) {
+        return new Expr.Update(target, field, rightHandSide);
       }
       throw error(equals, "Invalid assignment target");
     }
@@ -328,6 +362,9 @@ class Parser {
       var args = arguments(this::expression, EnumSetQueue.push(context, ExpressionContext.IN_CALL));
       if (args != null) {
         expr = new Expr.Call(expr, previous(), args);
+      } else if (match(DOT)) {
+        var field = consume(IDENTIFIER, "Expected property name after '.'");
+        expr = new Expr.Select(expr, field);
       } else {
         break;
       }
@@ -370,6 +407,10 @@ class Parser {
         yield new Expr.Grouping(group);
       }
       case IDENTIFIER -> new Expr.Variable(token);
+      case THIS -> {
+        if (context.contains(ExpressionContext.IN_CLASS_DECLARATION)) yield new Expr.This(token);
+        throw error(token, "'this' used outside of a class declaration");
+      }
       case EOF -> throw error(token, "Unexpected end of file");
       default -> {
         throw error(token, "Unable to handle token of type " + token.type());

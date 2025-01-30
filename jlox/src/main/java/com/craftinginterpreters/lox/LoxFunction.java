@@ -5,10 +5,25 @@ import java.util.List;
 public class LoxFunction implements LoxCallable {
   private final Stmt.Function declaration;
   private final Environment scope;
+  private final Type type;
+
+  enum Type {
+    FUNCTION, INITIALIZER;
+  }
+
+  static LoxFunction method(Stmt.Function declaration, Environment scope) {
+    var type = declaration.name().lexeme().equals("init") ? Type.INITIALIZER : Type.FUNCTION;
+    return new LoxFunction(declaration, scope, type);
+  }
 
   LoxFunction(Stmt.Function declaration, Environment scope) {
+    this(declaration, scope, Type.FUNCTION);
+  }
+
+  LoxFunction(Stmt.Function declaration, Environment scope, Type functionType) {
     this.declaration = declaration;
     this.scope = scope;
+    this.type = functionType;
   }
 
   @Override
@@ -23,7 +38,15 @@ public class LoxFunction implements LoxCallable {
     try {
       interpreter.executeBlock(declaration.body(), environment);
     } catch (ReturnSignal signal) {
+      if (Type.INITIALIZER.equals(type)) {
+        return environment.get(new Token(TokenType.THIS, "this", null, -1, -1));
+      }
+
       return signal.value;
+    }
+
+    if (Type.INITIALIZER.equals(type)) {
+      return environment.get(new Token(TokenType.THIS, "this", null, -1, -1));
     }
 
     return null;
@@ -37,5 +60,11 @@ public class LoxFunction implements LoxCallable {
   @Override
   public String toString() {
     return "<fn " + declaration.name().lexeme() + ">";
+  }
+
+  public LoxFunction bind(LoxInstance loxInstance) {
+    var environment = new Environment(scope);
+    environment.define("this", loxInstance);
+    return new LoxFunction(declaration, environment, type);
   }
 }

@@ -122,6 +122,103 @@ thrice(fun (a) {
     """, "<fn named>\n<fn named>\ntrue\n");
   }
 
+  @Test
+  void testClassDeclarationSucceeds() {
+    assertPrints("""
+  class Test {}
+  print Test;
+  """, "<class Test>\n");
+  }
+
+  @Test
+  void testClassInstantiationSucceeds() {
+    assertPrints("""
+    class Bagel {}
+    var bagel = Bagel();
+    print bagel;
+    """, "<Bagel instance>\n");
+  }
+
+  @Test
+  void testClassMethodsCanBeInvoked() {
+    assertPrints("""
+    class Bacon {
+      eat() {
+        print "Crunch, crunch, crunch!";
+      }
+    }
+
+    Bacon().eat();
+    """, "Crunch, crunch, crunch!\n");
+  }
+
+  @Test
+  void testClassMethodsLookupInstanceThis() {
+    assertPrints("""
+    class Cake {
+      taste() {
+        var adjective = "delicious";
+        print "The " + this.flavor + " cake is " + adjective + "!";
+      }
+    }
+
+    var cake = Cake();
+    cake.flavor = "German chocolate";
+    cake.taste();
+    """, "The German chocolate cake is delicious!\n");
+  }
+
+  @Test
+  void testThisLookupWorksForClosures() {
+    assertPrints("""
+    class Thing {
+      getCallback() {
+        fun localFunction() {
+          print this;
+        }
+
+        return localFunction;
+      }
+    }
+    
+    var callback = Thing().getCallback();
+    callback();
+
+    var callback2 = Thing().getCallback;
+    callback2()();
+    """, "<Thing instance>\n<Thing instance>\n");
+  }
+
+  @Test
+  void testThatInitIsCalled() {
+    assertPrints("""
+    class Thing {
+      init(x, y) {
+        print this;
+        print x;
+        print y;
+      }
+    }
+    Thing(1, 2);
+    """, "<Thing instance>\n1\n2\n");
+  }
+
+  @Test
+  void testThisWorksInMethods() {
+    assertPrints("""
+    class Thing {
+      init(x, y) {
+        this.x = x;
+        this.y = y;
+        this.z = this.x + this.y;
+
+        print this.x + " " + this.y + " " + this.z;
+      }
+    }
+    Thing(1, 2);
+    """, "1 2 3\n");
+  }
+
   void assertPrints(String input, String stdOut) {
     switch(new Scanner(input).scanTokens()) {
       case Scanner.LexError lexError -> {

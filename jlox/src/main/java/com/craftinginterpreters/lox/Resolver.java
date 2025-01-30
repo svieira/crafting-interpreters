@@ -92,6 +92,20 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
   }
 
   @Override
+  public Void visit(Stmt.ClassDeclaration classDeclaration) {
+    declare(classDeclaration.name());
+    define(classDeclaration.name());
+    try(var s = scope(classDeclaration)) {
+      declare("this", null);
+      define("this");
+      for (var f : classDeclaration.methods()) {
+        f.accept(this);
+      }
+    }
+    return null;
+  }
+
+  @Override
   public Void visit(Expr.Function function) {
     resolveFunction(function);
     return null;
@@ -100,6 +114,19 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
   @Override
   public Void visit(Stmt.Expression expression) {
     resolve(expression.expression());
+    return null;
+  }
+
+  @Override
+  public Void visit(Expr.Select select) {
+    resolve(select.target());
+    return null;
+  }
+
+  @Override
+  public Void visit(Expr.Update update) {
+    resolve(update.target());
+    resolve(update.value());
     return null;
   }
 
@@ -170,6 +197,12 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
   }
 
   @Override
+  public Void visit(Expr.This the) {
+    resolveLocal(the, the.keyword());
+    return null;
+  }
+
+  @Override
   public Void visit(Expr.Literal literal) {
     return null;
   }
@@ -192,25 +225,31 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     }
   }
 
-  private void declare(Token name) {
+  private void declare(String name, Token token) {
     if (scopes.isEmpty()) return;
 
     var scope = scopes.peek();
-    if (scope.variables.containsKey(name.lexeme())) {
-      Lox.error(name, "Already a variable with this name in this scope.");
+    if (scope.variables.containsKey(name)) {
+      Lox.error(token, "Already a variable with this name in this scope.");
     }
-    scope.variables.put(name.lexeme(), new VarState(scope.id++));
+    scope.variables.put(name, new VarState(scope.id++));
+  }
+  private void declare(Token name) {
+    declare(name.lexeme(), name);
   }
 
-  private void define(Token name) {
+  private void define(String name) {
     if (scopes.isEmpty()) return;
-    scopes.peek().variables.compute(name.lexeme(), (key,value) -> {
+    scopes.peek().variables.compute(name, (key,value) -> {
       if (value == null) {
         return new VarState(scopes.peek().id++, true);
       }
       value.defined = true;
       return value;
     });
+  }
+  private void define(Token name) {
+    define(name.lexeme());
   }
 
   void resolve(List<Stmt> statements) {

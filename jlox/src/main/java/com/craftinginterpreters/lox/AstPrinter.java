@@ -35,6 +35,11 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
   }
 
   @Override
+  public String visit(Expr.This the) {
+    return the.keyword().lexeme();
+  }
+
+  @Override
   public String visit(Expr.Unary unary) {
     return parenthesize(unary.operator().lexeme(), unary.right());
   }
@@ -42,6 +47,16 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
   @Override
   public String visit(Expr.Assignment assignment) {
     return parenthesize(assignment.name().lexeme() + "=", assignment.value());
+  }
+
+  @Override
+  public String visit(Expr.Select select) {
+    return parenthesize("." + select.field().lexeme(), select.target());
+  }
+
+  @Override
+  public String visit(Expr.Update update) {
+    return parenthesize("." + update.field().lexeme() + "=", update.target(), update.value());
   }
 
   @Override
@@ -101,8 +116,14 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
   public String visit(Stmt.Function function) {
     return indent + "[defun " + function.name().lexeme()
             + " [" + function.params().stream().map(Token::lexeme).collect(Collectors.joining(", "))
-            + "]"
+            + "]\n"
             + function.body().stream().map(s -> s.accept(new AstPrinter(indent()))).collect(Collectors.joining("\n"))
+            + "]";
+  }
+  @Override
+  public String visit(Stmt.ClassDeclaration declaration) {
+    return indent + "[defclass " + declaration.name().lexeme() + "\n"
+            + declaration.methods().stream().map(s -> s.accept(new AstPrinter(indent()))).collect(Collectors.joining("\n"))
             + "]";
   }
 

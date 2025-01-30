@@ -6,7 +6,7 @@ import java.util.List;
  * <p>The AST for the expression portion of the Lox grammar:</p>
  * <pre><code>
  * expression     → assignment ;
- * assignment     → IDENTIFIER "=" assignment
+ * assignment     → ( call "." )? IDENTIFIER "=" assignment
  *                | logic_or ;
  * logic_or       → logic_and ( "or" logic_and )* ;
  * logic_and      → discarded ( "and" discarded )* ;
@@ -19,7 +19,7 @@ import java.util.List;
  * unary          → ( "!" | "-" ) unary
  *                | coalesce ;
  * coalesce       → call ( "??" call )* ;
- * call           → primary ( "(" arguments? ")" )* ;
+ * call           → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
  * arguments      → expression ( "," expression )* ;
  * primary        → NUMBER | STRING | "true" | "false" | "nil"
  *                | "(" expression ")"
@@ -41,6 +41,9 @@ non-sealed interface Expr extends ParseResult {
     R visit(Assignment assignment);
     R visit(Call call);
     R visit(Function call);
+    R visit(Select select);
+    R visit(Update update);
+    R visit(This the);
     default R visit(Unparseable unparseable) {
       throw new UnsupportedOperationException("Did not expect to have to handle an unparsable expression");
     }
@@ -94,6 +97,21 @@ non-sealed interface Expr extends ParseResult {
     }
   }
   record Call(Expr callee, Token paren, List<Expr> arguments) implements Expr {
+    public <R> R accept(Visitor<R> visitor) {
+      return visitor.visit(this);
+    }
+  }
+  record Select(Expr target, Token field) implements Expr {
+    public <R> R accept(Visitor<R> visitor) {
+      return visitor.visit(this);
+    }
+  }
+  record Update(Expr target, Token field, Expr value) implements Expr {
+    public <R> R accept(Visitor<R> visitor) {
+      return visitor.visit(this);
+    }
+  }
+  record This(Token keyword) implements Expr {
     public <R> R accept(Visitor<R> visitor) {
       return visitor.visit(this);
     }

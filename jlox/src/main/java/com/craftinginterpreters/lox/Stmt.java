@@ -7,10 +7,12 @@ import java.util.List;
  * <pre><code>
  * program        → declaration* EOF ;
  *
- * declaration    → funDecl
+ * declaration    → classDecl
+ *                | funDecl
  *                | varDecl
  *                | statement ;
  *
+ * classDecl      → "class" IDENTIFIER "{" function* "}" ;
  * funDecl        → "fun" function ;
  * function       → IDENTIFIER "(" parameters? ")" block ;
  *
@@ -55,10 +57,10 @@ interface Stmt {
     R visit(LoopControl loopControl);
     R visit(Function function);
     R visit(Return returnStmt);
+    R visit(ClassDeclaration classDeclaration);
     default R visit(Unparsable errorNode) {
       throw new UnsupportedOperationException("Did not expect to have to handle unparsable statements");
     }
-
   }
 
   <R> R accept(Visitor<R> visitor);
@@ -109,6 +111,11 @@ interface Stmt {
     Block(Stmt... statements) {
       this(List.of(statements));
     }
+    public <R> R accept(Visitor<R> visitor) {
+      return visitor.visit(this);
+    }
+  }
+  record ClassDeclaration(Token name, List<Stmt.Function> methods) implements Stmt {
     public <R> R accept(Visitor<R> visitor) {
       return visitor.visit(this);
     }
