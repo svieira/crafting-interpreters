@@ -72,19 +72,25 @@ class Parser {
   }
 
   private Stmt.Function callable(String callableType, EnumSetQueue<StatementContext> context) {
+    boolean isMethod = context.containsAtHead(StatementContext.IN_CLASS_DECLARATION);
     var name = consume(IDENTIFIER, "Expected " + callableType + " name");
-    consume(LEFT_PAREN, "Expected '(' after " + callableType + " name.");
     var parameters = new ArrayList<Token>();
-    if (!check(RIGHT_PAREN)) {
-      do {
-        if (parameters.size() >= 255) {
-          throw error(peek(), "Can't have more than 255 parameters.");
-        }
+    // Methods are not required to have parentheses for getters
+    var isGetter = isMethod && !check(LEFT_PAREN);
+    if (!isGetter) {
+      consume(LEFT_PAREN, "Expected '(' after " + callableType + " name.");
+      if (!check(RIGHT_PAREN)) {
+        do {
+          if (parameters.size() >= 255) {
+            throw error(peek(), "Can't have more than 255 parameters.");
+          }
 
-        parameters.add(consume(IDENTIFIER, "Expect parameter name."));
-      } while (match(COMMA));
+          parameters.add(consume(IDENTIFIER, "Expect parameter name."));
+        } while (match(COMMA));
+      }
+      consume(RIGHT_PAREN, "Expect ')' after parameters.");
     }
-    consume(RIGHT_PAREN, "Expect ')' after parameters.");
+
     consume(LEFT_BRACE, "Expect '{' before " + callableType + " body.");
 
     if (context.containsAtHead(StatementContext.IN_CLASS_DECLARATION) && name.lexeme().equals("init")) {
@@ -93,8 +99,8 @@ class Parser {
       context = EnumSetQueue.push(context, StatementContext.IN_FUNCTION);
     }
 
-    List<Stmt> body = block(context);
-    return new Stmt.Function(name, parameters, body);
+    var body = block(context);
+    return new Stmt.Function(name, parameters, body, isGetter);
   }
 
   private Stmt varDeclaration(EnumSetQueue<StatementContext> context) {

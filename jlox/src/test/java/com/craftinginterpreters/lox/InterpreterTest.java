@@ -219,6 +219,24 @@ thrice(fun (a) {
     """, "1 2 3\n");
   }
 
+  @Test
+  void testGettersWork() {
+    assertPrints("""
+    class Circle {
+      init(radius) {
+        this.radius = radius;
+      }
+
+      area {
+        return 3.141592653 * this.radius * this.radius;
+      }
+    }
+
+    var circle = Circle(4);
+    print circle.area;
+    """, "50.265482448\n");
+  }
+
   void assertPrints(String input, String stdOut) {
     switch(new Scanner(input).scanTokens()) {
       case Scanner.LexError lexError -> {

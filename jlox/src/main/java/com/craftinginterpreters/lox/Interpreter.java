@@ -246,7 +246,13 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   public Object visit(Expr.Select select) {
     var target = evaluate(select.target());
     if (target instanceof LoxInstance instance) {
-      return instance.get(select.field());
+      Object value = instance.get(select.field());
+      if (value instanceof LoxFunction function) {
+        if (function.isGetter()) {
+          return function.call(this, List.of());
+        }
+      }
+      return value;
     }
     throw new EvaluationError(select.field(), "Only instances have properties");
   }

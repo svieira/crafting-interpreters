@@ -12,7 +12,8 @@ import java.util.List;
  *                | varDecl
  *                | statement ;
  *
- * classDecl      → "class" IDENTIFIER "{" function* "}" ;
+ * classDecl      → "class" IDENTIFIER "{" method* "}" ;
+ * method         → IDENTIFIER ( "(" parameters? ")" )? block ;
  * funDecl        → "fun" function ;
  * function       → IDENTIFIER "(" parameters? ")" block ;
  *
@@ -87,7 +88,10 @@ interface Stmt {
       return visitor.visit(this);
     }
   }
-  record Function(Token name, List<Token> params, List<Stmt> body) implements Stmt {
+  record Function(Token name, List<Token> params, List<Stmt> body, boolean isGetter) implements Stmt {
+    Function(Token name, List<Token> params, List<Stmt> body) {
+      this(name, params, body, false);
+    }
     public <R> R accept(Visitor<R> visitor) {
       return visitor.visit(this);
     }

@@ -26,6 +26,10 @@ public class LoxFunction implements LoxCallable {
     this.type = functionType;
   }
 
+  public boolean isGetter() {
+    return declaration.isGetter();
+  }
+
   @Override
   public Object call(Interpreter interpreter, List<Object> arguments) {
     var environment = new Environment(scope);
