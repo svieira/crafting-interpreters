@@ -13,7 +13,7 @@ import java.util.List;
  *                | statement ;
  *
  * classDecl      → "class" IDENTIFIER "{" method* "}" ;
- * method         → IDENTIFIER ( "(" parameters? ")" )? block ;
+ * method         → "class"? IDENTIFIER ( "(" parameters? ")" )? block ;
  * funDecl        → "fun" function ;
  * function       → IDENTIFIER "(" parameters? ")" block ;
  *
@@ -119,7 +119,7 @@ interface Stmt {
       return visitor.visit(this);
     }
   }
-  record ClassDeclaration(Token name, List<Stmt.Function> methods) implements Stmt {
+  record ClassDeclaration(Token name, List<Stmt.Function> methods, List<Stmt.Function> classMethods) implements Stmt {
     public <R> R accept(Visitor<R> visitor) {
       return visitor.visit(this);
     }

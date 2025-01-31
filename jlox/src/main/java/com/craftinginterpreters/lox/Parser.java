@@ -132,11 +132,21 @@ class Parser {
     var name = consume(IDENTIFIER, "Expect class name.");
     consume(LEFT_BRACE, "Expect '{' before class body.");
     var methods = new ArrayList<Stmt.Function>();
+    var classMethods = new ArrayList<Stmt.Function>();
     while (!check(RIGHT_BRACE) && !isAtEnd()) {
-      methods.add(callable("method", EnumSetQueue.push(context, StatementContext.IN_CLASS_DECLARATION)));
+      boolean isClassMethod = match(CLASS);
+      var method = callable("method", EnumSetQueue.push(context, StatementContext.IN_CLASS_DECLARATION));
+      if (isClassMethod) {
+        if (method.name().lexeme().equals("init") && !method.params().isEmpty()) {
+          throw error(method.name(), "Metaclass initializer cannot have parameters");
+        }
+        classMethods.add(method);
+      } else {
+        methods.add(method);
+      }
     }
     consume(RIGHT_BRACE, "Expect '}' after class body.");
-    return new Stmt.ClassDeclaration(name, methods);
+    return new Stmt.ClassDeclaration(name, methods, classMethods);
   }
 
   private Stmt forStatement(EnumSetQueue<StatementContext> context) {

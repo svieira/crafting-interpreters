@@ -3,11 +3,11 @@ package com.craftinginterpreters.lox;
 import java.util.HashMap;
 import java.util.Map;
 
-public class LoxInstance {
-  private final LoxClass loxClass;
+class LoxInstance {
+  protected final LoxClass loxClass;
   private final Map<String, Object> fields = new HashMap<>();
 
-  public LoxInstance(LoxClass loxClass) {
+  LoxInstance(LoxClass loxClass) {
     this.loxClass = loxClass;
   }
 
@@ -22,7 +22,7 @@ public class LoxInstance {
     throw new EvaluationError(fieldName, "Undefined property " + name + ".");
   }
 
-  public void set(Token field, Object value) {
+  void set(Token field, Object value) {
     fields.put(field.lexeme(), value);
   }
 

@@ -51,7 +51,12 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     for (var method : classDeclaration.methods()) {
       methods.put(method.name().lexeme(), LoxFunction.method(method, environment));
     }
-    var klass = new LoxClass(classDeclaration.name().lexeme(), methods);
+    var classMethods = new HashMap<String, LoxFunction>(classDeclaration.classMethods().size());
+    for (var method : classDeclaration.classMethods()) {
+      classMethods.put(method.name().lexeme(), LoxFunction.method(method, environment));
+    }
+    var klass = new LoxClass(classDeclaration.name().lexeme(), methods, classMethods);
+    klass.initialize(this);
     environment.assign(classDeclaration.name(), klass);
     return null;
   }

@@ -1,13 +1,14 @@
 package com.craftinginterpreters.lox;
 
-import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-public class LoxClass implements LoxCallable {
+public class LoxClass extends LoxInstance implements LoxCallable {
   private final String name;
-  private final HashMap<String, LoxFunction> methods;
+  private final Map<String, LoxFunction> methods;
 
-  public LoxClass(String name, HashMap<String, LoxFunction> methods) {
+  public LoxClass(String name, Map<String, LoxFunction> methods, Map<String, LoxFunction> classMethods) {
+    super(classMethods.isEmpty() ? null : new LoxClass(name + "::metaclass", classMethods, Map.of()));
     this.name = name;
     this.methods = methods;
   }
@@ -15,6 +16,16 @@ public class LoxClass implements LoxCallable {
   @Override
   public String toString() {
     return "<class " + this.name + ">";
+  }
+
+  void initialize(Interpreter interpreter) {
+    if (loxClass == null) {
+      return;
+    }
+    LoxFunction initializer = loxClass.findMethod("init");
+    if (initializer != null) {
+      initializer.bind(this).call(interpreter, List.of());
+    }
   }
 
   @Override

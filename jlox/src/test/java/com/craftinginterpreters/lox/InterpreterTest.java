@@ -237,6 +237,44 @@ thrice(fun (a) {
     """, "50.265482448\n");
   }
 
+  @Test
+  void testClassMethodsWork() {
+    assertPrints("""
+    class Math {
+      class init() {
+        this.x = 1;
+        this.y = 2;
+      }
+      class getter {
+        return this.x + this.y;
+      }
+      class square(n) {
+        return n * n;
+      }
+
+      init() {
+        this.x = 3;
+        this.y = 4;
+      }
+
+      getter {
+        return this.x + this.y;
+      }
+
+      square() {
+        return this.y * this.y;
+      }
+    }
+
+    print Math.square(3);
+    print Math.x + " " + Math.y + " " + Math.getter;
+
+    var m = Math();
+    print m.square();
+    print m.x + " " + m.y + " " + m.getter;
+    """, "9\n1 2 3\n16\n3 4 7\n");
+  }
+
   void assertPrints(String input, String stdOut) {
     switch(new Scanner(input).scanTokens()) {
       case Scanner.LexError lexError -> {
