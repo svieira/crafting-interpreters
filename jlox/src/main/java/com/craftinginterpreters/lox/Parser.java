@@ -477,6 +477,11 @@ class Parser {
     return expr;
   }
 
+  /**
+   * <p>Advance the stream past the provided token(s) if they are of the provided types.</p>
+   *
+   * <p>Also skips past comments.</p>
+  */
   private boolean match(TokenType... types) {
     while (check(COMMENT)) advance();
     for (TokenType type: types) {
@@ -488,12 +493,13 @@ class Parser {
     return false;
   }
 
-  /** Check the type of the next token */
+  /** Check the type of the next token without advancing the stream */
   private boolean check(TokenType type) {
     if (isAtEnd()) return false;
     return peek().type() == type;
   }
 
+  /** Advance to the next non-comment token */
   private Token advance() {
     if (isAtEnd()) return peek();
     do current += 1; while (check(COMMENT));
@@ -512,6 +518,7 @@ class Parser {
     return tokens.get(current - 1);
   }
 
+  /** Assert the type of the current token and discard it if the type matches. */
   private Token consume(TokenType type, String message) {
     if (check(type)) return advance();
 
