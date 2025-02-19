@@ -130,6 +130,13 @@ class Parser {
 
   private Stmt classDeclaration(EnumSetQueue<StatementContext> context) {
     var name = consume(IDENTIFIER, "Expect class name.");
+
+    Expr.Variable superclass = null;
+    if (match(LESS)) {
+      consume(IDENTIFIER, "Expect superclass name.");
+      superclass = new Expr.Variable(previous());
+    }
+
     consume(LEFT_BRACE, "Expect '{' before class body.");
     var methods = new ArrayList<Stmt.Function>();
     var classMethods = new ArrayList<Stmt.Function>();
@@ -146,7 +153,7 @@ class Parser {
       }
     }
     consume(RIGHT_BRACE, "Expect '}' after class body.");
-    return new Stmt.ClassDeclaration(name, methods, classMethods);
+    return new Stmt.ClassDeclaration(name, superclass, methods, classMethods);
   }
 
   private Stmt forStatement(EnumSetQueue<StatementContext> context) {
@@ -426,6 +433,14 @@ class Parser {
       case THIS -> {
         if (context.contains(ExpressionContext.IN_CLASS_DECLARATION)) yield new Expr.This(token);
         throw error(token, "'this' used outside of a class declaration");
+      }
+      case SUPER -> {
+        if (context.contains(ExpressionContext.IN_CLASS_DECLARATION)) {
+          consume(DOT, "Expect '.' after 'super'.");
+          var method = consume(IDENTIFIER, "Expect superclass method name.");
+          yield new Expr.Super(token, method);
+        }
+        throw error(token, "'super' used outside of a class declaration");
       }
       case EOF -> throw error(token, "Unexpected end of file");
       default -> {

@@ -22,7 +22,7 @@ import java.util.List;
  * call           → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
  * arguments      → expression ( "," expression )* ;
  * primary        → NUMBER | STRING | "true" | "false" | "nil"
- *                | "(" expression ")"
+ *                | "(" expression ")" | "super" "." IDENTIFIER
  *                | "fun" IDENTIFIER? "(" arguments ")" "{" declaration* "}"
  *                | IDENTIFIER ;
  * </code></pre>
@@ -44,6 +44,7 @@ non-sealed interface Expr extends ParseResult {
     R visit(Select select);
     R visit(Update update);
     R visit(This the);
+    R visit(Super superCall);
     default R visit(Unparseable unparseable) {
       throw new UnsupportedOperationException("Did not expect to have to handle an unparsable expression");
     }
@@ -112,6 +113,11 @@ non-sealed interface Expr extends ParseResult {
     }
   }
   record This(Token keyword) implements Expr {
+    public <R> R accept(Visitor<R> visitor) {
+      return visitor.visit(this);
+    }
+  }
+  record Super(Token keyword, Token method) implements Expr {
     public <R> R accept(Visitor<R> visitor) {
       return visitor.visit(this);
     }

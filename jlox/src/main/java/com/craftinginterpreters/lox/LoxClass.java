@@ -6,16 +6,19 @@ import java.util.Map;
 public class LoxClass extends LoxInstance implements LoxCallable {
   private final String name;
   private final Map<String, LoxFunction> methods;
+  private final LoxClass superclass;
 
-  public LoxClass(String name, Map<String, LoxFunction> methods, Map<String, LoxFunction> classMethods) {
-    super(classMethods.isEmpty() ? null : new LoxClass(name + "::metaclass", classMethods, Map.of()));
+  public LoxClass(String name, LoxClass superclass, Map<String, LoxFunction> methods, Map<String, LoxFunction> classMethods) {
+    super(classMethods.isEmpty() ? null : new LoxClass(name + "::metaclass", null, classMethods, Map.of()));
     this.name = name;
     this.methods = methods;
+    this.superclass = superclass;
   }
 
   @Override
   public String toString() {
-    return "<class " + this.name + ">";
+    var hasSuper = superclass != null;
+    return "<class " + this.name + (hasSuper ? " extends " + superclass.name : "") + ">";
   }
 
   void initialize(Interpreter interpreter) {
@@ -52,6 +55,10 @@ public class LoxClass extends LoxInstance implements LoxCallable {
   public LoxFunction findMethod(String methodName) {
     if (methods.containsKey(methodName)) {
       return methods.get(methodName);
+    }
+
+    if (superclass != null) {
+      return superclass.findMethod(methodName);
     }
 
     return null;

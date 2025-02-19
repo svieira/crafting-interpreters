@@ -95,12 +95,26 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
   public Void visit(Stmt.ClassDeclaration classDeclaration) {
     declare(classDeclaration.name());
     define(classDeclaration.name());
+
+    ScopeManager superclassScope = null;
+    if (classDeclaration.superclass() != null) {
+      if (classDeclaration.name().lexeme().equals(classDeclaration.superclass().name().lexeme())) {
+        Lox.error(classDeclaration.name(), "Class cannot extend from itself");
+      }
+      resolve(classDeclaration.superclass());
+      superclassScope = scope();
+      define("super");
+    }
+
     try(var s = scope(classDeclaration)) {
       declare("this", null);
       define("this");
       for (var f : classDeclaration.methods()) {
         f.accept(this);
       }
+    }
+    if (superclassScope != null) {
+      superclassScope.close();
     }
     return null;
   }
@@ -216,6 +230,12 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     return null;
   }
 
+  @Override
+  public Void visit(Expr.Super superCall) {
+    resolveLocal(superCall, superCall.keyword());
+    return null;
+  }
+
   private void resolveLocal(Expr expr, Token name) {
     for (int i = scopes.size() - 1; i >= 0; i--) {
       if (scopes.get(i).variables.containsKey(name.lexeme())) {
@@ -288,6 +308,11 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
       }
       resolve(function.body());
     }
+  }
+
+  private ScopeManager scope() {
+    scopes.push(new State());
+    return scopes::pop;
   }
 
   private ScopeManager scope(Stmt statement) {

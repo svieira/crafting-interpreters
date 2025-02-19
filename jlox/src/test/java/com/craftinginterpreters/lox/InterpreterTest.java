@@ -275,6 +275,41 @@ thrice(fun (a) {
     """, "9\n1 2 3\n16\n3 4 7\n");
   }
 
+  @Test
+  void testInheritanceWorks() {
+    assertPrints("""
+    class Doughnut {
+      cook() {
+        print "Fry until golden brown.";
+      }
+    }
+    
+    class BostonCream < Doughnut {}
+    
+    BostonCream().cook();
+    """, "Fry until golden brown.\n");
+  }
+
+  @Test
+  void testSuperWorks() {
+    assertPrints("""
+    class Doughnut {
+      cook() {
+        print "Fry until golden brown.";
+      }
+    }
+
+    class BostonCream < Doughnut {
+      cook() {
+        super.cook();
+        print "Pipe full of custard and coat with chocolate.";
+      }
+    }
+
+    BostonCream().cook();
+    """, "Fry until golden brown.\nPipe full of custard and coat with chocolate.\n");
+  }
+
   void assertPrints(String input, String stdOut) {
     switch(new Scanner(input).scanTokens()) {
       case Scanner.LexError lexError -> {

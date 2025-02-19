@@ -85,6 +85,11 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
   }
 
   @Override
+  public String visit(Expr.Super superCall) {
+    return "(super " + superCall.method().lexeme() + ")";
+  }
+
+  @Override
   public String visit(Expr.Unparseable unparsable) {
     return "($unparsable " + unparsable + ")";
   }

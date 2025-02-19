@@ -68,7 +68,8 @@ class ParserTest {
       testCase("controlFlow", "break;", "Unable to handle token of type BREAK"),
       testCase("controlFlow", "return;", "Unable to handle token of type RETURN"),
       testCase("scopedKeywords", "this;", "'this' used outside of a class declaration"),
-      testCase("scopedKeywords", "print 1; class Test { init() { return 123; } }", "Failed to parse (next viable token is [1:42] SEMICOLON ;) due to Cannot return value from init")
+      testCase("scopedKeywords", "print 1; class Test { init() { return 123; } }", "Failed to parse (next viable token is [1:42] SEMICOLON ;) due to Cannot return value from init"),
+      testCase("scopedKeywords", "super;", "'super' used outside of a class declaration")
     );
   }
 
