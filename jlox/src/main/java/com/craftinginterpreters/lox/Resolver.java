@@ -1,11 +1,23 @@
 package com.craftinginterpreters.lox;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Stack;
+import java.util.*;
 
-class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
+class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<Resolver.ResolutionReport> {
+  record ResolutionReport(List<ResolutionError> errors) {
+    public ResolutionReport() {
+      this(new ArrayList<>());
+    }
+
+    public boolean hasErrors() {
+      return !errors.isEmpty();
+    }
+
+    public void add(ResolutionError resolutionError) {
+      errors.add(resolutionError);
+    }
+  }
+  record ResolutionError(Token token, String message) {}
+
   record Coordinates(int scope, int id) {}
   private static final class VarState {
     boolean defined;
@@ -20,8 +32,8 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     }
   }
   private static final class State {
-    private Expr expr;
-    private Stmt stmt;
+    private Expr expr; // For debugging
+    private Stmt stmt; // For debugging
     int id = 0;
     Map<String, VarState> variables = new HashMap<>();
     State() {}
@@ -35,71 +47,78 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
 
   private final Interpreter interpreter;
   private final Stack<State> scopes = new Stack<>();
+  private final ResolutionReport report = new ResolutionReport();
 
   Resolver(Interpreter interpreter) {
     this.interpreter = interpreter;
     this.scopes.push(new State()); // The top-level scope
   }
 
-  @Override
-  public Void visit(Stmt.Block stmt) {
-    try(var s = scope(stmt)) {
-      resolve(stmt.statements());
+  ResolutionReport resolve(List<Stmt> statements) {
+    for (Stmt statement : statements) {
+      resolve(statement);
     }
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Stmt.Var declaration) {
+  public ResolutionReport visit(Stmt.Block stmt) {
+    try(var s = scope(stmt)) {
+      return resolve(stmt.statements());
+    }
+  }
+
+  @Override
+  public ResolutionReport visit(Stmt.Var declaration) {
     declare(declaration.name());
     if (declaration.initializer() != null) {
       resolve(declaration.initializer());
     }
     define(declaration.name());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Expr.Variable variable) {
+  public ResolutionReport visit(Expr.Variable variable) {
     if (!scopes.isEmpty()) {
       var varName = variable.name().lexeme();
       var variableReference = scopes.peek().variables.get(varName);
 
       if (variableReference != null && variableReference.defined == Boolean.FALSE) {
-        Lox.error(variable.name(),
-              "Can't read local variable in its own initializer.");
+        report.add(new ResolutionError(variable.name(),
+              "Can't read local variable in its own initializer."));
       }
     }
 
     resolveLocal(variable, variable.name());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Expr.Assignment assignment) {
+  public ResolutionReport visit(Expr.Assignment assignment) {
     resolve(assignment.value());
     resolveLocal(assignment, assignment.name());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Stmt.Function function) {
+  public ResolutionReport visit(Stmt.Function function) {
     declare(function.name());
     define(function.name());
 
     resolveFunction(function);
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Stmt.ClassDeclaration classDeclaration) {
+  public ResolutionReport visit(Stmt.ClassDeclaration classDeclaration) {
     declare(classDeclaration.name());
     define(classDeclaration.name());
 
     ScopeManager superclassScope = null;
     if (classDeclaration.superclass() != null) {
       if (classDeclaration.name().lexeme().equals(classDeclaration.superclass().name().lexeme())) {
-        Lox.error(classDeclaration.name(), "Class cannot extend from itself");
+        report.add(new ResolutionError(classDeclaration.name(), "Class cannot extend from itself"));
       }
       resolve(classDeclaration.superclass());
       superclassScope = scope();
@@ -116,124 +135,124 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     if (superclassScope != null) {
       superclassScope.close();
     }
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Expr.Function function) {
+  public ResolutionReport visit(Expr.Function function) {
     resolveFunction(function);
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Stmt.Expression expression) {
+  public ResolutionReport visit(Stmt.Expression expression) {
     resolve(expression.expression());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Expr.Select select) {
+  public ResolutionReport visit(Expr.Select select) {
     resolve(select.target());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Expr.Update update) {
+  public ResolutionReport visit(Expr.Update update) {
     resolve(update.target());
     resolve(update.value());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Stmt.If anIf) {
+  public ResolutionReport visit(Stmt.If anIf) {
     resolve(anIf.condition());
     resolve(anIf.whenTrue());
     if (anIf.whenFalse() != null) resolve(anIf.whenFalse());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Stmt.Print print) {
+  public ResolutionReport visit(Stmt.Print print) {
     resolve(print.expression());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Stmt.Return returnStmt) {
+  public ResolutionReport visit(Stmt.Return returnStmt) {
     if (returnStmt.value() != null) resolve(returnStmt.value());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Stmt.LoopControl loopControl) {
-    return null;
+  public ResolutionReport visit(Stmt.LoopControl loopControl) {
+    return report;
   }
 
   @Override
-  public Void visit(Stmt.While aWhile) {
+  public ResolutionReport visit(Stmt.While aWhile) {
     resolve(aWhile.condition());
     resolve(aWhile.body());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Expr.Trinary trinary) {
+  public ResolutionReport visit(Expr.Trinary trinary) {
     resolve(trinary.head());
     resolve(trinary.left());
     resolve(trinary.right());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Expr.Binary binary) {
+  public ResolutionReport visit(Expr.Binary binary) {
     resolve(binary.left());
     resolve(binary.right());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Expr.Logical logical) {
+  public ResolutionReport visit(Expr.Logical logical) {
     resolve(logical.left());
     resolve(logical.right());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Expr.Unary unary) {
+  public ResolutionReport visit(Expr.Unary unary) {
     resolve(unary.right());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Expr.Grouping grouping) {
+  public ResolutionReport visit(Expr.Grouping grouping) {
     resolve(grouping.expression());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Expr.This the) {
+  public ResolutionReport visit(Expr.This the) {
     resolveLocal(the, the.keyword());
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Expr.Literal literal) {
-    return null;
+  public ResolutionReport visit(Expr.Literal literal) {
+    return report;
   }
 
   @Override
-  public Void visit(Expr.Call call) {
+  public ResolutionReport visit(Expr.Call call) {
     resolve(call.callee());
     for (Expr arg : call.arguments()) {
       resolve(arg);
     }
-    return null;
+    return report;
   }
 
   @Override
-  public Void visit(Expr.Super superCall) {
+  public ResolutionReport visit(Expr.Super superCall) {
     resolveLocal(superCall, superCall.keyword());
-    return null;
+    return report;
   }
 
   private void resolveLocal(Expr expr, Token name) {
@@ -250,7 +269,7 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
 
     var scope = scopes.peek();
     if (scope.variables.containsKey(name)) {
-      Lox.error(token, "Already a variable with this name in this scope.");
+      report.add(new ResolutionError(token, "Already a variable with this name in this scope."));
     }
     scope.variables.put(name, new VarState(scope.id++));
   }
@@ -270,12 +289,6 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
   }
   private void define(Token name) {
     define(name.lexeme());
-  }
-
-  void resolve(List<Stmt> statements) {
-    for (Stmt statement : statements) {
-      resolve(statement);
-    }
   }
 
   private void resolve(Stmt statement) {

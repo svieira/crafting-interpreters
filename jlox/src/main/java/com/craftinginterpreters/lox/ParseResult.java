@@ -7,4 +7,6 @@ package com.craftinginterpreters.lox;
  *    <li>A parse error {@link ParseError}</li>
  * </ul>
  */
-public sealed interface ParseResult permits Program, Expr, ParseError {}
+public sealed interface ParseResult permits ParseResult.Success, ParseError {
+  sealed interface Success extends ParseResult permits Program, Expr {}
+}

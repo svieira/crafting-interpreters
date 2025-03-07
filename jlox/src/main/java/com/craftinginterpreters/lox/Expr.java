@@ -29,7 +29,7 @@ import java.util.List;
 
  * {@link Stmt see also <code>Stmt</code>}
  */
-non-sealed interface Expr extends ParseResult {
+non-sealed interface Expr extends ParseResult.Success {
   interface Visitor<R> {
     R visit(Trinary trinary);
     R visit(Binary binary);

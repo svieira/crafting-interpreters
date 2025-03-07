@@ -23,6 +23,12 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     this.printTarget = printTarget;
   }
 
+  void interpret(Program program) {
+    interpret(program, e -> {
+      throw e;
+    });
+  }
+
   void interpret(Program program, Consumer<EvaluationError> handler) {
     try {
       for (Stmt statement : program) {

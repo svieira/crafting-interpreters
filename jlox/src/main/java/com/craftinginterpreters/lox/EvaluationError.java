@@ -8,6 +8,11 @@ class EvaluationError extends RuntimeException {
     this.token = operator;
   }
 
+  EvaluationError(Throwable cause) {
+    super(cause);
+    token = Token.artificial("<Unknown source location>");
+  }
+
   Token getToken() {
     return token;
   }

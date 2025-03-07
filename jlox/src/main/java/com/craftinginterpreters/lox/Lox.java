@@ -8,25 +8,11 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.regex.Pattern;
+import com.craftinginterpreters.lox.Lox.RunResults.*;
 
 public class Lox {
   static final Interpreter INTERPRETER = new Interpreter();
-  static boolean hadError = false;
-  private static boolean hadRuntimeError = false;
-  private static final Pattern DIRECTIVE = Pattern.compile("^(?<directive>:\\w+)");
-
-  private enum Mode {
-    TOKENS, PARSE_TREE, EVALUATE;
-    static Optional<EnumSet<Mode>> parse(String directive) {
-      return Optional.ofNullable(switch (directive) {
-        case ":lex", ":tokens" -> EnumSet.of(Mode.TOKENS);
-        case ":ast", ":tree", ":parse" -> EnumSet.of(Mode.PARSE_TREE);
-        case ":eval", ":exec" -> EnumSet.of(Mode.EVALUATE);
-        case ":all" -> EnumSet.allOf(Mode.class);
-        default -> null;
-      });
-    }
-  }
+  private static final Pattern DIRECTIVE = Pattern.compile("^(?<directive>(?::\\w+)+)");
 
   public static void main(String[] args) throws IOException {
     if (args.length > 3) {
@@ -44,33 +30,109 @@ public class Lox {
     byte[] bytes = "-".equals(path.trim()) ? System.in.readAllBytes() : Files.readAllBytes(Paths.get(path));
     var directive = mode.startsWith(":") ? mode : ":" + mode;
     var modes = Mode.parse(directive).orElse(EnumSet.of(Mode.EVALUATE));
-    System.out.println("Running in " + mode + " parsed to " + modes);
-    run(new String(bytes, Charset.defaultCharset()), modes);
-    // Indicate an error in the exit code.
-    if (hadError) System.exit(65);
-    if (hadRuntimeError) System.exit(70);
+    switch(run(new String(bytes, Charset.defaultCharset()), modes)) {
+      case Failure f -> {
+        switch (f) {
+          case LexFailure l -> {
+            error(l.lexError.getLine(), l.lexError.getColumn(), l.lexError.getMessage());
+            System.exit(65);
+          }
+          case ParseFailure p -> {
+            error(p.parseError.token(), p.parseError.message());
+            System.exit(65);
+          }
+          case ResolutionFailure r -> {
+            for (var ex : r.report.errors()) {
+              error(ex.token(), ex.message());
+            }
+          }
+          case EvalFailure e -> {
+            runtimeError(e.evalError);
+            System.exit(70);
+          }
+        }
+      }
+      case Success s -> {
+        displaySuccess(s, modes);
+        System.exit(0);
+      }
+    }
   }
 
   private static void runPrompt() throws IOException {
     InputStreamReader input = new InputStreamReader(System.in);
     BufferedReader reader = new BufferedReader(input);
 
-    String lastLine = "";
+    var lastScript = "";
+    var isContinuationLine = false;
     Set<Mode> lastModes = EnumSet.of(Mode.EVALUATE);
-    while (true) {
-      prompt(lastModes);
+    var reportParseError = false;
+    loop: while (true) {
+      prompt(lastModes, isContinuationLine);
       String line = reader.readLine();
-      if (line == null || line.isBlank() || line.trim().equals(":exit")) break;
-      var lineAndModes = directive(line, lastLine, lastModes);
+      line = line == null ? "" : line.trim();
+
+      switch (line) {
+        case ":report" -> {
+          reportParseError = !reportParseError;
+          line = "";
+        }
+        case ":reset" -> {
+          line = "";
+          lastScript = "";
+          isContinuationLine = false;
+        }
+        case ":exit" -> {
+          break loop;
+        }
+      }
+
+      var lineAndModes = directive(line, lastScript, lastModes);
       // If we reused the line then we have a mode change by itself.
-      lastLine = lineAndModes.line == lastLine ? lastLine : lineAndModes.line;
-      lastModes = lineAndModes.modes == lastModes ? lastModes : lineAndModes.modes;
-      run(lineAndModes.line, lineAndModes.modes);
-      hadError = false;
+      lastScript = lineAndModes.script;
+      lastModes = lineAndModes.modes;
+
+      switch (run(lineAndModes.script, lineAndModes.modes)) {
+        case Success s -> {
+          lastScript = "";
+          isContinuationLine = false;
+          displaySuccess(s, lastModes);
+        }
+        case EvalFailure e -> {
+          lastScript = "";
+          isContinuationLine = false;
+          runtimeError(e.evalError);
+        }
+        case LexFailure f -> {
+          lastScript = "";
+          isContinuationLine = false;
+          error(f.lexError.getLine(), f.lexError.getColumn(), f.lexError.getMessage());
+        }
+        case ResolutionFailure r -> {
+          lastScript = "";
+          isContinuationLine = false;
+          for (var ex : r.report.errors()) {
+            error(ex.token(), ex.message());
+          }
+        }
+        case ParseFailure p -> {
+          if (reportParseError) {
+            error(p.parseError.token(), p.parseError.message());
+            if (p.parseError.earlierError() != null) {
+              error(p.parseError.earlierError().token(), p.parseError.earlierError().message());
+            }
+          }
+          isContinuationLine = true;
+        }
+      }
     }
   }
 
-  private static void prompt(Set<Mode> lastModes) {
+  private static void prompt(Set<Mode> lastModes, boolean continuationLine) {
+    if (continuationLine) {
+      System.out.print("  ");
+      return;
+    }
     var modes = new StringBuilder();
     for (var mode : lastModes) {
       modes.append(switch (mode) {
@@ -83,71 +145,151 @@ public class Lox {
     System.out.print((modals.equals(":eval") ? "" : modals) + "> ");
   }
 
-  private static void run(String source, Set<Mode> modes) {
+  private static RunResults run(String source, Set<Mode> modes) {
     Scanner scanner = new Scanner(source);
     Scanner.ScanResults results = scanner.scanTokens();
-    switch (results) {
-      case Scanner.TokenList tokens -> parseAndRun(tokens, modes);
-      case Scanner.LexError lexError -> error(lexError.getLine(), lexError.getColumn(), lexError.getMessage());
+    return switch (results) {
+      case Scanner.TokenList tokens -> {
+        if (modes.size() == 1 && modes.contains(Mode.TOKENS)) {
+          yield new LexSuccess(tokens);
+        }
+        yield parseAndRun(tokens, modes);
+      }
+      case Scanner.LexError lexError -> new LexFailure(lexError);
+    };
+  }
+
+  sealed interface RunResults {
+    sealed interface Success extends RunResults {
+      Scanner.TokenList lex();
+    }
+    record LexSuccess(Scanner.TokenList lex) implements Success {}
+    record ParseSuccess(Scanner.TokenList lex, ParseResult.Success parse) implements Success {}
+    record ExpressionSuccess(Scanner.TokenList lex, Expr expression, Object result) implements Success {}
+    record ProgramSuccess(Scanner.TokenList lex, Program program) implements Success {}
+
+    sealed interface Failure extends RunResults {}
+    record LexFailure(Scanner.LexError lexError) implements Failure {}
+    record ParseFailure(ParseError parseError) implements Failure {}
+    record ResolutionFailure(Resolver.ResolutionReport report) implements Failure {}
+    record EvalFailure(EvaluationError evalError) implements Failure {}
+  }
+
+
+  private enum Mode {
+    TOKENS, PARSE_TREE, EVALUATE;
+    static Optional<EnumSet<Mode>> parse(String directive) {
+      EnumSet<Mode> modes = EnumSet.noneOf(Mode.class);
+      for (var d : directive.split(":")) {
+        d = ":" + d.toLowerCase().trim();
+        modes.addAll(parseInner(d));
+      }
+      return modes.isEmpty() ? Optional.empty() : Optional.of(modes);
+    }
+    static EnumSet<Mode> parseInner(String directive) {
+      return switch (directive) {
+        case ":lex", ":tokens" -> EnumSet.of(Mode.TOKENS);
+        case ":ast", ":tree", ":parse" -> EnumSet.of(Mode.PARSE_TREE);
+        case ":eval", ":exec" -> EnumSet.of(Mode.EVALUATE);
+        case ":all" -> EnumSet.allOf(Mode.class);
+        default -> EnumSet.noneOf(Mode.class);
+      };
     }
   }
 
-  private static void parseAndRun(Scanner.TokenList tokens, Set<Mode> modes) {
-    if (modes.contains(Mode.TOKENS)) {
-      for (Token token: tokens) {
-        System.out.println(token);
-      }
-    }
-
+  private static RunResults parseAndRun(Scanner.TokenList tokens, Set<Mode> modes) {
     Parser parser = new Parser(tokens);
     ParseResult parse = parser.parse();
 
-    if (modes.contains(Mode.PARSE_TREE) && modes.contains(Mode.TOKENS)) {
-      System.out.println("\n\n");
-    }
-
     switch (parse) {
       case Expr expression -> {
-        expression.accept(new AstPrinter());
-        if (modes.size() > 1) {
-          System.out.print("\n\n--[evaluates to]--> ");
+        if (!modes.contains(Mode.EVALUATE)) {
+          return new ParseSuccess(tokens, expression);
         }
         try {
           var result = expression.accept(INTERPRETER);
-          System.out.println(Interpreter.stringify(result));
+          return new ExpressionSuccess(tokens, expression, result);
         } catch (EvaluationError e) {
-          Lox.runtimeError(e);
+          return new EvalFailure(e);
         }
       }
       case Program program -> {
-        if (modes.contains(Mode.PARSE_TREE)) {
-          program.accept(new AstPrinter()).forEach(System.out::println);
+        var resolver = new Resolver(INTERPRETER);
+        var report = resolver.resolve(program);
+        if (report.hasErrors()) {
+          return new ResolutionFailure(report);
         }
-        if (modes.contains(Mode.EVALUATE)) {
-          var resolver = new Resolver(INTERPRETER);
-          resolver.resolve(program);
 
-          // Stop if there was a resolution error.
-          if (hadError) return;
+        if (!modes.contains(Mode.EVALUATE)) {
+          return new ParseSuccess(tokens, program);
+        }
 
-          INTERPRETER.interpret(program, Lox::runtimeError);
+        try {
+          INTERPRETER.interpret(program);
+          return new ProgramSuccess(tokens, program);
+        } catch (EvaluationError e) {
+          return new EvalFailure(e);
+        } catch (Exception e) {
+          return new EvalFailure(new EvaluationError(e));
         }
       }
       case ParseError e -> {
-        error(e.token(), e.message());
-        if (e.earlierError() != null) {
-          System.err.println("Additionally, failed to parse as a statement");
-          error(e.earlierError().token(), e.earlierError().message());
-        }
+        return new ParseFailure(e);
       }
     }
   }
 
-  private record LineAndModes(String line, Set<Mode> modes){}
-  private static LineAndModes directive(String line, String lastLine, Set<Mode> lastModes) {
+  private static void displaySuccess(Success success, Set<Mode> modes) {
+    var multiMode = modes.size() > 1;
+    if (modes.contains(Mode.TOKENS)) {
+      displayLex(success.lex());
+    }
+
+    if (multiMode) System.out.println();
+
+    if (modes.contains(Mode.PARSE_TREE)) {
+      switch (success) {
+        case LexSuccess lex -> {/* ignored */}
+        case ParseSuccess parse -> {
+          switch (parse.parse) {
+            case Expr expression -> displayExpression(expression);
+            case Program program -> displayProgram(program);
+          }
+        }
+        case ExpressionSuccess e -> displayExpression(e.expression);
+        case ProgramSuccess p -> displayProgram(p.program);
+      }
+    }
+
+    if (multiMode) System.out.println();
+
+    if (modes.contains(Mode.EVALUATE)) {
+      if (success instanceof ExpressionSuccess expressionSuccess) {
+        System.out.println(Interpreter.stringify(expressionSuccess.result));
+      }
+      System.out.println();
+    }
+  }
+
+  private static void displayProgram(Program program) {
+    program.accept(new AstPrinter()).forEach(System.out::println);
+  }
+
+  private static void displayExpression(Expr expression) {
+    System.out.println(expression.accept(new AstPrinter()));
+  }
+
+  private static void displayLex(Scanner.TokenList tokens) {
+    for (Token token: tokens) {
+      System.out.println(token);
+    }
+  }
+
+  private record LineAndModes(String script, Set<Mode> modes){}
+  private static LineAndModes directive(String line, String previousScript, Set<Mode> lastModes) {
     var match = DIRECTIVE.matcher(line);
     if (!match.find()) {
-      return new LineAndModes(line, lastModes);
+      return new LineAndModes(previousScript + '\n' + line, lastModes);
     }
 
     String directive = match.group("directive");
@@ -159,11 +301,12 @@ public class Lox {
       )
     );
 
-    var evalLine = line.trim().equals(directive)
-            ? lastLine
+    var newScript = line.trim().equals(directive)
+            ? previousScript
+            // Only allowing mode changes with expressions, not in the middle of statements
             : line.replaceFirst(directive, "");
 
-    return new LineAndModes(evalLine, modes);
+    return new LineAndModes(newScript, modes);
   }
 
   static void error(int line, int column, String message) {
@@ -181,11 +324,9 @@ public class Lox {
   static void runtimeError(EvaluationError error) {
     System.err.println(error.getMessage() +
             "\n[" + error.getToken().line() + ":" + error.getToken().column() + "]");
-    hadRuntimeError = true;
   }
 
   private static void report(int line, int column, String where, String message) {
     System.err.println("[line " + line + "][column " + column + "] Error" + where + ": " + message);
-    hadError = true;
   }
 }
