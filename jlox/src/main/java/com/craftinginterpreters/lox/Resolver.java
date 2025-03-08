@@ -273,6 +273,7 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
     }
     scope.variables.put(name, new VarState(scope.id++));
   }
+
   private void declare(Token name) {
     declare(name.lexeme(), name);
   }
@@ -287,6 +288,7 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
       return value;
     });
   }
+
   private void define(Token name) {
     define(name.lexeme());
   }
