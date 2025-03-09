@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
+import static com.craftinginterpreters.lox.LoxClass.INIT;
 import static com.craftinginterpreters.lox.TokenType.*;
 
 class Parser {
@@ -93,7 +94,7 @@ class Parser {
 
     consume(LEFT_BRACE, "Expect '{' before " + callableType + " body.");
 
-    if (context.containsAtHead(StatementContext.IN_CLASS_DECLARATION) && name.lexeme().equals("init")) {
+    if (context.containsAtHead(StatementContext.IN_CLASS_DECLARATION) && name.lexeme().equals(INIT)) {
       context = EnumSetQueue.push(context, StatementContext.IN_FUNCTION, StatementContext.IN_INIT);
     } else {
       context = EnumSetQueue.push(context, StatementContext.IN_FUNCTION);
@@ -144,7 +145,7 @@ class Parser {
       boolean isClassMethod = match(CLASS);
       var method = callable("method", EnumSetQueue.push(context, StatementContext.IN_CLASS_DECLARATION));
       if (isClassMethod) {
-        if (method.name().lexeme().equals("init") && !method.params().isEmpty()) {
+        if (method.name().lexeme().equals(INIT) && !method.params().isEmpty()) {
           throw error(method.name(), "Metaclass initializer cannot have parameters");
         }
         classMethods.add(method);

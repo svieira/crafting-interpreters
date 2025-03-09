@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Map;
 
 public class LoxClass extends LoxInstance implements LoxCallable {
+  /** The method responsible for constructing an object (or class) in Lox */
+  public static final String INIT = "init";
   private final String name;
   private final Map<String, LoxFunction> methods;
   private final LoxClass superclass;
@@ -25,7 +27,7 @@ public class LoxClass extends LoxInstance implements LoxCallable {
     if (loxClass == null) {
       return;
     }
-    LoxFunction initializer = loxClass.findMethod("init");
+    LoxFunction initializer = loxClass.findMethod(INIT);
     if (initializer != null) {
       initializer.bind(this).call(interpreter, List.of());
     }
@@ -34,7 +36,7 @@ public class LoxClass extends LoxInstance implements LoxCallable {
   @Override
   public Object call(Interpreter interpreter, List<Object> arguments) {
     var instance = new LoxInstance(this);
-    LoxFunction initializer = findMethod("init");
+    LoxFunction initializer = findMethod(INIT);
     if (initializer != null) {
       initializer.bind(instance).call(interpreter, arguments);
     }
@@ -43,7 +45,7 @@ public class LoxClass extends LoxInstance implements LoxCallable {
 
   @Override
   public int arity() {
-    LoxFunction initializer = findMethod("init");
+    LoxFunction initializer = findMethod(INIT);
     if (initializer == null) return 0;
     return initializer.arity();
   }

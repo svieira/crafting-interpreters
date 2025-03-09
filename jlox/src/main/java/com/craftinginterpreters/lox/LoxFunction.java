@@ -2,6 +2,9 @@ package com.craftinginterpreters.lox;
 
 import java.util.List;
 
+import static com.craftinginterpreters.lox.LoxClass.INIT;
+import static com.craftinginterpreters.lox.TokenType.THIS;
+
 public class LoxFunction implements LoxCallable {
   private final Stmt.Function declaration;
   private final Environment scope;
@@ -12,7 +15,7 @@ public class LoxFunction implements LoxCallable {
   }
 
   static LoxFunction method(Stmt.Function declaration, Environment scope) {
-    var type = declaration.name().lexeme().equals("init") ? Type.INITIALIZER : Type.FUNCTION;
+    var type = declaration.name().lexeme().equals(INIT) ? Type.INITIALIZER : Type.FUNCTION;
     return new LoxFunction(declaration, scope, type);
   }
 
@@ -43,14 +46,14 @@ public class LoxFunction implements LoxCallable {
       interpreter.executeBlock(declaration.body(), environment);
     } catch (ReturnSignal signal) {
       if (Type.INITIALIZER.equals(type)) {
-        return environment.get(new Token(TokenType.THIS, "this", null, -1, -1));
+        return environment.get(new Token(THIS, THIS.keyword(), null, -1, -1));
       }
 
       return signal.value;
     }
 
     if (Type.INITIALIZER.equals(type)) {
-      return environment.get(new Token(TokenType.THIS, "this", null, -1, -1));
+      return environment.get(new Token(THIS, THIS.keyword(), null, -1, -1));
     }
 
     return null;
@@ -68,7 +71,7 @@ public class LoxFunction implements LoxCallable {
 
   public LoxFunction bind(LoxInstance loxInstance) {
     var environment = new Environment(scope);
-    environment.define("this", loxInstance);
+    environment.define(THIS.keyword(), loxInstance);
     return new LoxFunction(declaration, environment, type);
   }
 }
