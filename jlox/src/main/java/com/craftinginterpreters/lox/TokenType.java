@@ -28,5 +28,9 @@ enum TokenType {
     // Syntax and utilities
     COMMENT,
     INVALID,
-    EOF
+    EOF;
+
+    final String keyword() {
+        return name().toLowerCase();
+    }
 }

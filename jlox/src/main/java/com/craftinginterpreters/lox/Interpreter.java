@@ -4,6 +4,9 @@ import java.io.PrintStream;
 import java.util.*;
 import java.util.function.Consumer;
 
+import static com.craftinginterpreters.lox.TokenType.SUPER;
+import static com.craftinginterpreters.lox.TokenType.THIS;
+
 public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   private final Map<Expr, Resolver.Coordinates> locals;
   private final Environment environment;
@@ -65,7 +68,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     var env = environment;
     if (superclass != null) {
       env = new Environment(env);
-      env.define("super", superclass);
+      env.define(SUPER.keyword(), superclass);
     }
 
     var methods = new HashMap<String, LoxFunction>(classDeclaration.methods().size());
@@ -328,7 +331,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     var distance = locals.get(superCall);
     LoxClass superClass = (LoxClass)environment.getAt(distance, superCall.keyword());
     // HACK: This relies on the environment layout we build in Resolver#visit(ClassDeclaration)
-    LoxInstance loxObject = (LoxInstance) environment.getAt(new Resolver.Coordinates(distance.scope() - 1, Integer.MAX_VALUE), Token.artificial("this"));
+    LoxInstance loxObject = (LoxInstance) environment.getAt(new Resolver.Coordinates(distance.scope() - 1, Integer.MAX_VALUE), Token.artificial(THIS.keyword()));
     LoxFunction method = superClass.findMethod(superCall.method().lexeme());
     if (method == null) {
       throw new EvaluationError(superCall.method(), "Undefined method " + superCall.method().lexeme());

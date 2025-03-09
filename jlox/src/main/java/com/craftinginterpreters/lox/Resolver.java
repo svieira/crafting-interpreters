@@ -2,6 +2,9 @@ package com.craftinginterpreters.lox;
 
 import java.util.*;
 
+import static com.craftinginterpreters.lox.TokenType.SUPER;
+import static com.craftinginterpreters.lox.TokenType.THIS;
+
 class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<Resolver.ResolutionReport> {
   record ResolutionReport(List<ResolutionError> errors) {
     public ResolutionReport() {
@@ -122,12 +125,12 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
       }
       resolve(classDeclaration.superclass());
       superclassScope = scope();
-      define("super");
+      define(SUPER.keyword());
     }
 
     try(var s = scope(classDeclaration)) {
-      declare("this", null);
-      define("this");
+      declare(THIS.keyword(), null);
+      define(THIS.keyword());
       for (var f : classDeclaration.methods()) {
         f.accept(this);
       }
