@@ -358,10 +358,11 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   }
 
   void executeBlock(List<Stmt> statements, Environment environment) {
+    // Look ma, no mutation!
+    // Yes child, but that's a lot of allocation!
+    var blockFrame = new Interpreter(environment, printTarget, locals);
     for (Stmt statement : statements) {
-      // Look ma, no mutation!
-      // Yes child, but that's a lot of allocation!
-      statement.accept(new Interpreter(environment, printTarget, locals));
+      statement.accept(blockFrame);
     }
   }
 
