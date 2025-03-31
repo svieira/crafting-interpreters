@@ -97,6 +97,16 @@ thrice(fun (a) {
   }
 
   @Test
+  void testVariableAssignmentInBlocksIsFastLookup() {
+    assertPrints("""
+    var x = 1;
+    {
+      print x;
+    }
+    """, "1\n");
+  }
+
+  @Test
   void testClosureVariableScope() {
     assertPrints("""
     fun outer() {
