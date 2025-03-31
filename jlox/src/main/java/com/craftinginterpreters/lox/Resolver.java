@@ -93,14 +93,14 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
       }
     }
 
-    resolveLocal(variable, variable.name());
+    resolveLocal(variable.name());
     return report;
   }
 
   @Override
   public ResolutionReport visit(Expr.Assignment assignment) {
     resolve(assignment.value());
-    resolveLocal(assignment, assignment.name());
+    resolveLocal(assignment.name());
     return report;
   }
 
@@ -234,7 +234,7 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
 
   @Override
   public ResolutionReport visit(Expr.This the) {
-    resolveLocal(the, the.keyword());
+    resolveLocal(the.keyword());
     return report;
   }
 
@@ -254,14 +254,14 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
 
   @Override
   public ResolutionReport visit(Expr.Super superCall) {
-    resolveLocal(superCall, superCall.keyword());
+    resolveLocal(superCall.keyword());
     return report;
   }
 
-  private void resolveLocal(Expr expr, Token name) {
+  private void resolveLocal(Token name) {
     for (int i = scopes.size() - 1; i >= 0; i--) {
       if (scopes.get(i).variables.containsKey(name.lexeme())) {
-        interpreter.resolve(expr, new Coordinates(scopes.size() - 1 - i, scopes.get(i).variables.get(name.lexeme()).id));
+        interpreter.resolve(name, new Coordinates(scopes.size() - 1 - i, scopes.get(i).variables.get(name.lexeme()).id));
         return;
       }
     }

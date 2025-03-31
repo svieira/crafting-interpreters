@@ -12,7 +12,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   private final Environment environment;
   private final PrintStream printTarget;
 
-  private final static class StatsCountingLocals extends HashMap<Expr, Resolver.Coordinates> {
+  private final static class StatsCountingLocals extends HashMap<Token, Resolver.Coordinates> {
     private int lookups;
     private int misses;
     private int hits;
@@ -31,7 +31,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     }
 
     @Override
-    public Resolver.Coordinates put(Expr key, Resolver.Coordinates value) {
+    public Resolver.Coordinates put(Token key, Resolver.Coordinates value) {
       writes++;
       return super.put(key, value);
     }
@@ -192,7 +192,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   @Override
   public Object visit(Expr.Assignment assignment) {
     var result = evaluate(assignment.value());
-    Resolver.Coordinates distance = locals.get(assignment);
+    Resolver.Coordinates distance = locals.get(assignment.name());
     if (distance != null) {
       environment.assignAt(distance, assignment.name(), result);
     } else {
@@ -363,7 +363,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
   @Override
   public Object visit(Expr.Super superCall) {
-    var distance = locals.get(superCall);
+    var distance = locals.get(superCall.keyword());
     LoxClass superClass = (LoxClass)environment.getAt(distance, superCall.keyword());
     // HACK: This relies on the environment layout we build in Resolver#visit(ClassDeclaration)
     LoxInstance loxObject = (LoxInstance) environment.getAt(new Resolver.Coordinates(distance.scope() - 1, Integer.MAX_VALUE), Token.artificial(THIS.keyword()));
@@ -376,7 +376,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
   // Language semantics and operations!
   private Object lookupVariable(Token name, Expr variable) {
-    Resolver.Coordinates distance = locals.get(variable);
+    Resolver.Coordinates distance = locals.get(name);
     if (distance != null) {
       return environment.getAt(distance, name);
     } else {
@@ -446,7 +446,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     throw new EvaluationError(location, failureMessage);
   }
 
-  public void resolve(Expr expr, Resolver.Coordinates depth) {
+  void resolve(Token expr, Resolver.Coordinates depth) {
     locals.put(expr, depth);
   }
 
