@@ -145,7 +145,7 @@ public class Lox {
     System.out.print((modals.equals(":eval") ? "" : modals) + "> ");
   }
 
-  private static RunResults run(String source, Set<Mode> modes) {
+  static RunResults run(String source, Set<Mode> modes) {
     Scanner scanner = new Scanner(source);
     Scanner.ScanResults results = scanner.scanTokens();
     return switch (results) {
@@ -176,7 +176,7 @@ public class Lox {
   }
 
 
-  private enum Mode {
+  enum Mode {
     TOKENS, PARSE_TREE, EVALUATE;
     static Optional<EnumSet<Mode>> parse(String directive) {
       EnumSet<Mode> modes = EnumSet.noneOf(Mode.class);
