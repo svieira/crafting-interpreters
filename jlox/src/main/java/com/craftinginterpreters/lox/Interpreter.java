@@ -366,7 +366,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     var distance = locals.get(superCall.keyword());
     LoxClass superClass = (LoxClass)environment.getAt(distance, superCall.keyword());
     // HACK: This relies on the environment layout we build in Resolver#visit(ClassDeclaration)
-    LoxInstance loxObject = (LoxInstance) environment.getAt(new Resolver.Coordinates(distance.scope() - 1, Integer.MAX_VALUE), Token.artificial(THIS.keyword()));
+    LoxInstance loxObject = (LoxInstance) environment.getAt(new Resolver.Coordinates(distance.scope() - 1, Integer.MAX_VALUE), Token.artificial(THIS));
     LoxFunction method = superClass.findMethod(superCall.method().lexeme());
     if (method == null) {
       throw new EvaluationError(superCall.method(), "Undefined method " + superCall.method().lexeme());

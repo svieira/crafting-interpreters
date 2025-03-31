@@ -46,14 +46,14 @@ public class LoxFunction implements LoxCallable {
       interpreter.executeBlock(declaration.body(), environment);
     } catch (ReturnSignal signal) {
       if (Type.INITIALIZER.equals(type)) {
-        return environment.get(new Token(THIS, THIS.keyword(), null, -1, -1));
+        return environment.get(Token.artificial(THIS));
       }
 
       return signal.value;
     }
 
     if (Type.INITIALIZER.equals(type)) {
-      return environment.get(new Token(THIS, THIS.keyword(), null, -1, -1));
+      return environment.get(Token.artificial(THIS));
     }
 
     return null;
