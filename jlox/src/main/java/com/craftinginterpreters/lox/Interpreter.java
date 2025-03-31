@@ -84,6 +84,10 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
       value = evaluate(stmt.initializer());
     }
 
+    var coordinates = locals.get(stmt.name());
+    if (coordinates != null) {
+      environment.assignAt(coordinates, stmt.name(), value);
+    }
     environment.define(stmt.name(), value);
     return null;
   }
@@ -117,6 +121,9 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     var klass = new LoxClass(classDeclaration.name().lexeme(), superclass, methods, classMethods);
     klass.initialize(this);
     environment.assign(classDeclaration.name(), klass);
+    if (locals.containsKey(classDeclaration.name())) {
+      environment.assignAt(locals.get(classDeclaration.name()), classDeclaration.name(), klass);
+    }
     return null;
   }
 
@@ -157,6 +164,9 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   public Void visit(Stmt.Function function) {
     var f = new LoxFunction(function, environment);
     environment.define(function.name(), f);
+    if (locals.containsKey(function.name())) {
+      environment.assignAt(locals.get(function.name()), function.name(), f);
+    }
     return null;
   }
 

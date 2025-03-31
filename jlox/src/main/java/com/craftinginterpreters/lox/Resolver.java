@@ -78,6 +78,7 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
       resolve(declaration.initializer());
     }
     define(declaration.name());
+    resolveLocal(declaration.name());
     return report;
   }
 
@@ -108,6 +109,7 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
   public ResolutionReport visit(Stmt.Function function) {
     declare(function.name());
     define(function.name());
+    resolveLocal(function.name());
 
     resolveFunction(function);
     return report;
@@ -117,6 +119,7 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
   public ResolutionReport visit(Stmt.ClassDeclaration classDeclaration) {
     declare(classDeclaration.name());
     define(classDeclaration.name());
+    resolveLocal(classDeclaration.name());
 
     ScopeManager superclassScope = null;
     if (classDeclaration.superclass() != null) {
@@ -129,7 +132,7 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
     }
 
     try(var s = scope(classDeclaration)) {
-      declare(THIS.keyword(), null);
+      declare(THIS.keyword(), Token.artificial(THIS));
       define(THIS.keyword());
       for (var f : classDeclaration.methods()) {
         f.accept(this);
