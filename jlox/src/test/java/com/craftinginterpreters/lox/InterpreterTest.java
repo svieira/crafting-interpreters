@@ -99,11 +99,12 @@ thrice(fun (a) {
   @Test
   void testVariableAssignmentInBlocksIsFastLookup() {
     assertPrints("""
-    var x = 1;
+    var x;
     {
+      x = 3;
       print x;
     }
-    """, "1\n");
+    """, "3\n");
   }
 
   @Test
