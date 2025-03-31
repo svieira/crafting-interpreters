@@ -74,6 +74,7 @@ class Environment {
   }
 
   public void assign(Token name, Object value) {
+    stats.byNameLookups++;
     if (values.containsKey(name.lexeme())) {
       stats.byNameAssignments++;
       values.put(name.lexeme(), value);
