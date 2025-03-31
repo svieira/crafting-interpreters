@@ -8,19 +8,54 @@ import static com.craftinginterpreters.lox.TokenType.SUPER;
 import static com.craftinginterpreters.lox.TokenType.THIS;
 
 public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
-  private final Map<Expr, Resolver.Coordinates> locals;
+  private final StatsCountingLocals locals;
   private final Environment environment;
   private final PrintStream printTarget;
+
+  private final static class StatsCountingLocals extends HashMap<Expr, Resolver.Coordinates> {
+    private int lookups;
+    private int misses;
+    private int hits;
+    private int writes;
+
+    @Override
+    public Resolver.Coordinates get(Object key) {
+      var result = super.get(key);
+      lookups++;
+      if (result == null) {
+        misses++;
+      } else {
+        hits++;
+      }
+      return result;
+    }
+
+    @Override
+    public Resolver.Coordinates put(Expr key, Resolver.Coordinates value) {
+      writes++;
+      return super.put(key, value);
+    }
+
+    String asString() {
+      return String.format("""
+      Local variable resolution table:
+        Writes: %d
+        Lookups: %d
+        Misses: %d
+        Hits: %d
+      """, writes, lookups, misses, hits);
+    }
+  }
 
   public Interpreter() {
     this(new Environment(new GlobalEnvironment()), System.out);
   }
 
   Interpreter(Environment environment, PrintStream printTarget) {
-    this(environment, printTarget, new HashMap<>());
+    this(environment, printTarget, new StatsCountingLocals());
   }
 
-  Interpreter(Environment environment, PrintStream printTarget, Map<Expr, Resolver.Coordinates> locals) {
+  Interpreter(Environment environment, PrintStream printTarget, StatsCountingLocals locals) {
     this.environment = environment;
     this.locals = locals;
     this.printTarget = printTarget;
@@ -347,6 +382,11 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     } else {
       return environment.get(name);
     }
+  }
+
+  void printStats() {
+    System.out.println(locals.asString());
+    environment.printStats();
   }
 
   private Object evaluate(Expr expression) {

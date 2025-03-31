@@ -332,6 +332,7 @@ thrice(fun (a) {
             var resolver = new Resolver(interpreter);
             resolver.resolve(program);
             interpreter.interpret(program, Assertions::assertNull);
+            interpreter.printStats();
             assertEquals(stdOut, prints.toString(StandardCharsets.UTF_8));
           }
         }
