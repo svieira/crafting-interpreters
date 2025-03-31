@@ -24,6 +24,7 @@ class ParserTest {
       testCase("precedence", "a ? b ? c : d : e", "(? a (: (? b (: c d)) e))"),
       testCase("precedence", "nil and false or true", "(or (and nil false) true)"),
       testCase("precedence", "first and second ? x : y", "(and first (? second (: x y)))"),
+      testCase("precedence", "\"string concatenation with \" + (embedded - math) + \" is sane?\"", "(+ (+ `string concatenation with ` (group (- embedded math))) ` is sane?`)"),
       testCase("unary", "-3", "(- 3.0)"),
       testCase("exprStatement", "1 + 1;", "\n[void (+ 1.0 1.0)]"),
       testCase("call", "someThing();", "\n[void (someThing)]")
