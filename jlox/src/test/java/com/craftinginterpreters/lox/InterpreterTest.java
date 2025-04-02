@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,7 +30,7 @@ stuff();
             assertNotNull(result);
           }
           case Program program -> {
-            var env = new Environment();
+            var env = new EnvironmentSimple();
             var prints = new ByteArrayOutputStream();
             var output = new PrintStream(prints, true);
             new Interpreter(env, output).interpret(program, Assertions::assertNotNull);
@@ -122,7 +124,7 @@ thrice(fun (a) {
   }
 
   @Test
-  void testClosureAsAssignment() {
+  void testClosureNameAsAssignment() {
     assertPrints("""
     var test = fun named() {
       print test;
@@ -131,6 +133,30 @@ thrice(fun (a) {
     };
     test();
     """, "<fn named>\n<fn named>\ntrue\n");
+  }
+
+  @Test
+  void testClosureNameAsRecursion() {
+    assertPrints("""
+    var test = fun recursive(i) {
+      if (i == 0) { print 0; return; }
+      print i;
+      recursive(i - 1);
+    };
+    test(3);
+    """, "3\n2\n1\n0\n");
+  }
+
+  @Test
+  void testStatementRecursion() {
+    assertPrints("""
+    fun recursive(i) {
+      if (i == 0) { print 0; return; }
+      print i;
+      recursive(i - 1);
+    }
+    recursive(3);
+    """, "3\n2\n1\n0\n");
   }
 
   @Test
@@ -329,19 +355,29 @@ thrice(fun (a) {
       case Scanner.TokenList tokens -> {
         switch(new Parser(tokens).parse()) {
           case ParseError parseError -> {
-            fail(parseError.getMessage());
+            var l = new ArrayList<String>();
+            while (parseError != null) {
+              l.add(parseError.getMessage());
+              parseError = parseError.earlierError();
+            }
+            fail(String.join("\n", l));
           }
           case Expr expr -> {
             var result = expr.accept(new Interpreter());
             fail("Expected a program of statements, but received the expression " + expr + " which evaluated to " + Interpreter.stringify(result));
           }
           case Program program -> {
-            var env = new Environment();
+            Environment env = new EnvironmentSimple();
             var prints = new ByteArrayOutputStream();
             var output = new PrintStream(prints, true);
+            var resolver = new Resolver();
+            var report = resolver.resolve(program);
+            if (report.hasErrors()) {
+              fail(report.errors().stream().map(Resolver.ResolutionError::toString).collect(Collectors.joining("\n")));
+            } else {
+              env = new EnvironmentOptimized(report.locals());
+            }
             var interpreter = new Interpreter(env, output);
-            var resolver = new Resolver(interpreter);
-            resolver.resolve(program);
             interpreter.interpret(program, Assertions::assertNull);
             interpreter.printStats();
             assertEquals(stdOut, prints.toString(StandardCharsets.UTF_8));

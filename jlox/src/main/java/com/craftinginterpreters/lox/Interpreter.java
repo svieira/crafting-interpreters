@@ -8,56 +8,19 @@ import static com.craftinginterpreters.lox.TokenType.SUPER;
 import static com.craftinginterpreters.lox.TokenType.THIS;
 
 public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
-  private final StatsCountingLocals locals;
   private final Environment environment;
   private final PrintStream printTarget;
 
-  private final static class StatsCountingLocals extends HashMap<Token, Resolver.Coordinates> {
-    private int lookups;
-    private int misses;
-    private int hits;
-    private int writes;
-
-    @Override
-    public Resolver.Coordinates get(Object key) {
-      var result = super.get(key);
-      lookups++;
-      if (result == null) {
-        misses++;
-      } else {
-        hits++;
-      }
-      return result;
-    }
-
-    @Override
-    public Resolver.Coordinates put(Token key, Resolver.Coordinates value) {
-      writes++;
-      return super.put(key, value);
-    }
-
-    String asString() {
-      return String.format("""
-      Local variable resolution table:
-        Writes: %d
-        Lookups: %d
-        Misses: %d
-        Hits: %d
-      """, writes, lookups, misses, hits);
-    }
+  public Interpreter() {
+    this(new EnvironmentSimple(new EnvironmentGlobal()), System.out);
   }
 
-  public Interpreter() {
-    this(new Environment(new GlobalEnvironment()), System.out);
+  Interpreter(Environment environment) {
+    this(environment, System.out);
   }
 
   Interpreter(Environment environment, PrintStream printTarget) {
-    this(environment, printTarget, new StatsCountingLocals());
-  }
-
-  Interpreter(Environment environment, PrintStream printTarget, StatsCountingLocals locals) {
     this.environment = environment;
-    this.locals = locals;
     this.printTarget = printTarget;
   }
 
@@ -84,10 +47,6 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
       value = evaluate(stmt.initializer());
     }
 
-    var coordinates = locals.get(stmt.name());
-    if (coordinates != null) {
-      environment.assignAt(coordinates, stmt.name(), value);
-    }
     environment.define(stmt.name(), value);
     return null;
   }
@@ -106,8 +65,8 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     environment.define(classDeclaration.name(), null);
     var env = environment;
     if (superclass != null) {
-      env = new Environment(env);
-      env.define(SUPER.keyword(), superclass);
+      env = env.pushScope();
+      env.define(Token.artificial(SUPER), superclass);
     }
 
     var methods = new HashMap<String, LoxFunction>(classDeclaration.methods().size());
@@ -121,9 +80,6 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     var klass = new LoxClass(classDeclaration.name().lexeme(), superclass, methods, classMethods);
     klass.initialize(this);
     environment.assign(classDeclaration.name(), klass);
-    if (locals.containsKey(classDeclaration.name())) {
-      environment.assignAt(locals.get(classDeclaration.name()), classDeclaration.name(), klass);
-    }
     return null;
   }
 
@@ -164,9 +120,6 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   public Void visit(Stmt.Function function) {
     var f = new LoxFunction(function, environment);
     environment.define(function.name(), f);
-    if (locals.containsKey(function.name())) {
-      environment.assignAt(locals.get(function.name()), function.name(), f);
-    }
     return null;
   }
 
@@ -189,7 +142,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
   @Override
   public Void visit(Stmt.Block block) {
-    executeBlock(block.statements(), new Environment(environment));
+    executeBlock(block.statements(), environment.pushScope());
     return null;
   }
 
@@ -202,12 +155,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   @Override
   public Object visit(Expr.Assignment assignment) {
     var result = evaluate(assignment.value());
-    Resolver.Coordinates distance = locals.get(assignment.name());
-    if (distance != null) {
-      environment.assignAt(distance, assignment.name(), result);
-    } else {
-      environment.assign(assignment.name(), result);
-    }
+    environment.assign(assignment.name(), result);
     return result;
   }
 
@@ -345,9 +293,11 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   @Override
   public Object visit(Expr.Function f) {
     var fun = new Stmt.Function(f.name(), f.arguments(), f.body());
-    var env = new Environment(environment);
+    var env = environment.pushScope();
     var func = new LoxFunction(fun, env);
-    env.define(f.name(), func);
+    if (!f.isAnonymous()) {
+      env.define(f.name(), func);
+    }
     return func;
   }
 
@@ -363,20 +313,20 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
   @Override
   public Object visit(Expr.Variable variable) {
-    return lookupVariable(variable.name(), variable);
+    return lookupVariable(variable.name());
   }
 
   @Override
   public Object visit(Expr.This the) {
-    return lookupVariable(the.keyword(), the);
+    return lookupVariable(the.keyword());
   }
 
   @Override
   public Object visit(Expr.Super superCall) {
-    var distance = locals.get(superCall.keyword());
-    LoxClass superClass = (LoxClass)environment.getAt(distance, superCall.keyword());
-    // HACK: This relies on the environment layout we build in Resolver#visit(ClassDeclaration)
-    LoxInstance loxObject = (LoxInstance) environment.getAt(new Resolver.Coordinates(distance.scope() - 1, Integer.MAX_VALUE), Token.artificial(THIS));
+    var instanceEnv = environment.getEnvironmentOf(Token.artificial(THIS));
+    // HACK: This relies on the environment layout we build in LoxFunction#bind and Interpreter#visit(Stmt.ClassDeclaration)
+    LoxClass superClass = (LoxClass)instanceEnv.parent().get(superCall.keyword());
+    LoxInstance loxObject = (LoxInstance) instanceEnv.get(Token.artificial(THIS));
     LoxFunction method = superClass.findMethod(superCall.method().lexeme());
     if (method == null) {
       throw new EvaluationError(superCall.method(), "Undefined method " + superCall.method().lexeme());
@@ -385,17 +335,11 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   }
 
   // Language semantics and operations!
-  private Object lookupVariable(Token name, Expr variable) {
-    Resolver.Coordinates distance = locals.get(name);
-    if (distance != null) {
-      return environment.getAt(distance, name);
-    } else {
-      return environment.get(name);
-    }
+  private Object lookupVariable(Token name) {
+    return environment.get(name);
   }
 
   void printStats() {
-    System.out.println(locals.asString());
     environment.printStats();
   }
 
@@ -410,7 +354,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
   void executeBlock(List<Stmt> statements, Environment environment) {
     // Look ma, no mutation!
     // Yes child, but that's a lot of allocation!
-    var blockFrame = new Interpreter(environment, printTarget, locals);
+    var blockFrame = new Interpreter(environment, printTarget);
     for (Stmt statement : statements) {
       statement.accept(blockFrame);
     }
@@ -454,10 +398,6 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
   private static EvaluationError fail(Token location, String failureMessage) {
     throw new EvaluationError(location, failureMessage);
-  }
-
-  void resolve(Token expr, Resolver.Coordinates depth) {
-    locals.put(expr, depth);
   }
 
   private static final class LoopControlSignal extends RuntimeException {

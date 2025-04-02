@@ -23,7 +23,10 @@ public class PerformanceSpike {
     print "The value of this operation is " + odd(3);
     """;
     try {
-      Lox.run(tough, EnumSet.of(Lox.Mode.EVALUATE));
+      switch(Lox.run(tough, EnumSet.of(Lox.Mode.EVALUATE))) {
+        case Lox.RunResults.Success s -> System.out.println(s);
+        case Lox.RunResults.Failure s -> System.out.println(s);
+      }
     } catch (Exception e) {
       e.printStackTrace();
     }

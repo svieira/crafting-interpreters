@@ -1,125 +1,27 @@
 package com.craftinginterpreters.lox;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+abstract class Environment {
+  /** Construct a new environment with this one as the enclosing one */
+  abstract Environment pushScope();
 
-class Environment {
-  private final Map<String, Object> values = new HashMap<>();
-  private final List<Object> quickValues = new ArrayList<>();
-  private final Environment enclosing;
-  private final Environment top;
-  private final int depth;
-  private final static class Stats {
-    private int byNameAssignments = 0;
-    private int byNameLookups = 0;
-    private int byNameMisses = 0;
-    private int byCoordinateAssignments = 0;
-    private int byCoordinateLookups = 0;
-    private int byCoordinateMisses = 0;
+  /** Lookup a token in the environment in an optimizable way */
+  abstract Object get(Token name);
 
-    private String asString() {
-      return String.format("""
-      By name:
-        Assignments: %d
-        Lookups: %d
-        Misses: %d
-      By coordinates:
-        Assignments: %d
-        Lookups: %d
-        Misses: %d
-      """, byNameAssignments, byNameLookups, byNameMisses, byCoordinateAssignments, byCoordinateLookups, byCoordinateMisses);
-    }
-  }
-  private final Stats stats;
+  /** Define (declare and assign in a single operation) a name to a value in an optimizable way */
+  abstract void define(Token name, Object value);
 
-  Environment() {
-    enclosing = null;
-    top = this;
-    depth = 0;
-    stats = new Stats();
-  }
+  /** Attempt to assign a value to a previously declared variable slot in an optimizable way */
+  abstract void assign(Token name, Object value);
 
-  Environment(Environment enclosing) {
-    this.enclosing = enclosing;
-    this.top = enclosing.top;
-    this.depth = enclosing.depth + 1;
-    this.stats = enclosing.top.stats;
-  }
+  /** Globally define a name in a way that we're not going to optimize yet */
+  abstract void define(String name, Object value);
 
-  Object get(Token name) {
-    if (values.containsKey(name.lexeme())) {
-      stats.byNameLookups++;
-      return values.get(name.lexeme());
-    }
+  /** Exists only for a hack to get the superclass */
+  abstract Environment getEnvironmentOf(Token name);
 
-    if (enclosing != null) {
-      stats.byNameMisses++;
-      return enclosing.get(name);
-    }
+  /** Exists only for a hack to get the superclass */
+  abstract Environment parent();
 
-    throw new EvaluationError(name,
-            "Undefined variable '" + name.lexeme() + "'.");
-  }
-
-  void define(Token name, Object value) {
-    stats.byNameAssignments++;
-    values.put(name.lexeme(), value);
-  }
-
-  void define(String name, Object value) {
-    stats.byNameAssignments++;
-    values.put(name, value);
-  }
-
-  public void assign(Token name, Object value) {
-    stats.byNameLookups++;
-    if (values.containsKey(name.lexeme())) {
-      stats.byNameAssignments++;
-      values.put(name.lexeme(), value);
-      return;
-    }
-
-    if (enclosing != null) {
-      enclosing.assign(name, value);
-      return;
-    }
-
-    throw new EvaluationError(name,
-            "Cannot assign to undefined variable '" + name.lexeme() + "'");
-  }
-
-  public Object getAt(Resolver.Coordinates distance, Token name) {
-    var scope = ancestor(distance.scope());
-    var isQuick = scope.quickValues.size() > distance.id();
-    stats.byCoordinateLookups++;
-    if (!isQuick) {
-      stats.byCoordinateMisses++;
-    }
-    return isQuick ? scope.quickValues.get(distance.id()) : get(name);
-  }
-
-  public void assignAt(Resolver.Coordinates distance, Token name, Object result) {
-    var ancestor = ancestor(distance.scope());
-    if (ancestor == null) {
-      throw new NullPointerException("Expected to find enclosing scope at " + distance + " from " + name);
-    }
-    stats.byCoordinateAssignments++;
-    ancestor.quickValues.add(distance.id(), result);
-  }
-
-  Environment ancestor(int distance) {
-    Environment environment = this;
-    for (int i = 0; i < distance; i++) {
-      environment = environment.enclosing;
-      if (environment == null) break;
-    }
-
-    return environment;
-  }
-
-  void printStats() {
-    System.out.println(stats.asString());
-  }
+  /** Implementations should track some stats */
+  abstract void printStats();
 }

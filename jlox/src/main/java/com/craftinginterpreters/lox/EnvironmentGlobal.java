@@ -2,8 +2,8 @@ package com.craftinginterpreters.lox;
 
 import java.util.List;
 
-public class GlobalEnvironment extends Environment {
-  public GlobalEnvironment() {
+public class EnvironmentGlobal extends EnvironmentSimple {
+  public EnvironmentGlobal() {
     define("clock", new LoxCallable() {
       @Override
       public Object call(Interpreter interpreter, List<Object> arguments) {

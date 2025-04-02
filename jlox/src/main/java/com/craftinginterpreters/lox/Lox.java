@@ -214,7 +214,7 @@ public class Lox {
         }
       }
       case Program program -> {
-        var resolver = new Resolver(INTERPRETER);
+        var resolver = new Resolver();
         var report = resolver.resolve(program);
         if (report.hasErrors()) {
           return new ResolutionFailure(report);
@@ -225,7 +225,10 @@ public class Lox {
         }
 
         try {
-          INTERPRETER.interpret(program);
+          System.out.println("Simple");
+          new Interpreter(new EnvironmentSimple(new EnvironmentGlobal())).interpret(program);
+          System.out.println("Optimized");
+          new Interpreter(new EnvironmentOptimized(report.locals())).interpret(program);
           return new ProgramSuccess(tokens, program);
         } catch (EvaluationError e) {
           return new EvalFailure(e);

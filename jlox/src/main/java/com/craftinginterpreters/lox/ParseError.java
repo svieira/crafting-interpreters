@@ -11,7 +11,7 @@ public final class ParseError extends RuntimeException implements ParseResult {
   }
 
   ParseError(Token token, String message) {
-    super("[" + token.line() + ":" + token.column() + "] " + message);
+    super(token + " :: " + message);
     this.token = token;
     this.message = message;
   }

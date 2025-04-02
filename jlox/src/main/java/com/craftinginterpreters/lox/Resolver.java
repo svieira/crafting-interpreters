@@ -6,9 +6,9 @@ import static com.craftinginterpreters.lox.TokenType.SUPER;
 import static com.craftinginterpreters.lox.TokenType.THIS;
 
 class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<Resolver.ResolutionReport> {
-  record ResolutionReport(List<ResolutionError> errors) {
+  record ResolutionReport(List<ResolutionError> errors, StatsCountingLocals locals) {
     public ResolutionReport() {
-      this(new ArrayList<>());
+      this(new ArrayList<>(), new StatsCountingLocals());
     }
 
     public boolean hasErrors() {
@@ -48,12 +48,10 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
     }
   }
 
-  private final Interpreter interpreter;
   private final Stack<State> scopes = new Stack<>();
   private final ResolutionReport report = new ResolutionReport();
 
-  Resolver(Interpreter interpreter) {
-    this.interpreter = interpreter;
+  Resolver() {
     this.scopes.push(new State()); // The top-level scope
   }
 
@@ -109,7 +107,6 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
   public ResolutionReport visit(Stmt.Function function) {
     declare(function.name());
     define(function.name());
-    resolveLocal(function.name());
 
     resolveFunction(function);
     return report;
@@ -119,7 +116,6 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
   public ResolutionReport visit(Stmt.ClassDeclaration classDeclaration) {
     declare(classDeclaration.name());
     define(classDeclaration.name());
-    resolveLocal(classDeclaration.name());
 
     ScopeManager superclassScope = null;
     if (classDeclaration.superclass() != null) {
@@ -128,12 +124,12 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
       }
       resolve(classDeclaration.superclass());
       superclassScope = scope();
-      define(SUPER.keyword());
+      define(Token.artificial(SUPER));
     }
 
     try(var s = scope(classDeclaration)) {
       declare(THIS.keyword(), Token.artificial(THIS));
-      define(THIS.keyword());
+      define(Token.artificial(THIS));
       for (var f : classDeclaration.methods()) {
         f.accept(this);
       }
@@ -264,7 +260,7 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
   private void resolveLocal(Token name) {
     for (int i = scopes.size() - 1; i >= 0; i--) {
       if (scopes.get(i).variables.containsKey(name.lexeme())) {
-        interpreter.resolve(name, new Coordinates(scopes.size() - 1 - i, scopes.get(i).variables.get(name.lexeme()).id));
+        report.locals.put(name, new Coordinates(scopes.size() - 1 - i, scopes.get(i).variables.get(name.lexeme()).id));
         return;
       }
     }
@@ -297,6 +293,7 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
 
   private void define(Token name) {
     define(name.lexeme());
+    resolveLocal(name);
   }
 
   private void resolve(Stmt statement) {
@@ -323,11 +320,13 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
         declare(function.name());
         define(function.name());
       }
-      for (Token param : function.arguments()) {
-        declare(param);
-        define(param);
+      try(var p = scope(function)) {
+        for (Token param : function.arguments()) {
+          declare(param);
+          define(param);
+        }
+        resolve(function.body());
       }
-      resolve(function.body());
     }
   }
 
