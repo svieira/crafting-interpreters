@@ -378,7 +378,7 @@ thrice(fun (a) {
               env = new EnvironmentOptimized(report.locals());
             }
             var interpreter = new Interpreter(env, output);
-            interpreter.interpret(program, Assertions::assertNull);
+            interpreter.interpret(program);
             interpreter.printStats();
             assertEquals(stdOut, prints.toString(StandardCharsets.UTF_8));
           }
