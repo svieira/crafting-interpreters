@@ -88,10 +88,24 @@ interface Stmt {
       return visitor.visit(this);
     }
   }
-  record Function(Token name, List<Token> params, List<Stmt> body, boolean isGetter) implements Stmt {
+  record Function(Token name, List<Token> params, List<Stmt> body, Type type) implements Stmt {
+    enum Type { NONE, METHOD, GETTER, INITIALIZER }
     Function(Token name, List<Token> params, List<Stmt> body) {
-      this(name, params, body, false);
+      this(name, params, body, Type.NONE);
     }
+
+    public boolean isMethod() {
+      return type != Type.NONE;
+    }
+
+    public boolean isGetter() {
+      return type == Type.GETTER;
+    }
+
+    public boolean isInitializer() {
+      return type == Type.INITIALIZER;
+    }
+
     public <R> R accept(Visitor<R> visitor) {
       return visitor.visit(this);
     }

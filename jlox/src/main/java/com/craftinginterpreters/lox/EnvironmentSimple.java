@@ -25,7 +25,7 @@ class EnvironmentSimple extends Environment {
   }
 
   @Override
-  Environment pushScope() {
+  Environment pushScope(Object identifier) {
     return new EnvironmentSimple(this);
   }
 

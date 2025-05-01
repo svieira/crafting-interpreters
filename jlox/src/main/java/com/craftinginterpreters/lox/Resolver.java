@@ -37,6 +37,7 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
   private static final class State {
     private Expr expr; // For debugging
     private Stmt stmt; // For debugging
+    private TokenType token; // For debugging
     int id = 0;
     Map<String, VarState> variables = new HashMap<>();
     State() {}
@@ -45,6 +46,9 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
     }
     State(Expr expr) {
       this.expr = expr;
+    }
+    State(TokenType token) {
+      this.token = token;
     }
   }
 
@@ -76,7 +80,7 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
       resolve(declaration.initializer());
     }
     define(declaration.name());
-    resolveLocal(declaration.name());
+    // resolveLocal(declaration.name());
     return report;
   }
 
@@ -105,7 +109,6 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
 
   @Override
   public ResolutionReport visit(Stmt.Function function) {
-    declare(function.name());
     define(function.name());
 
     resolveFunction(function);
@@ -114,7 +117,6 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
 
   @Override
   public ResolutionReport visit(Stmt.ClassDeclaration classDeclaration) {
-    declare(classDeclaration.name());
     define(classDeclaration.name());
 
     ScopeManager superclassScope = null;
@@ -123,13 +125,19 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
         report.add(new ResolutionError(classDeclaration.name(), "Class cannot extend from itself"));
       }
       resolve(classDeclaration.superclass());
-      superclassScope = scope();
+      superclassScope = scope(SUPER);
       define(Token.artificial(SUPER));
     }
 
+    try (var s = scope(classDeclaration)) {
+      //define(Token.artificial(THIS));
+      for (var f : classDeclaration.classMethods()) {
+        f.accept(this);
+      }
+    }
+
     try(var s = scope(classDeclaration)) {
-      declare(THIS.keyword(), Token.artificial(THIS));
-      define(Token.artificial(THIS));
+      //define(Token.artificial(THIS));
       for (var f : classDeclaration.methods()) {
         f.accept(this);
       }
@@ -257,6 +265,7 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
     return report;
   }
 
+  /** A (hopefully taken and assigned name) is looked up */
   private void resolveLocal(Token name) {
     for (int i = scopes.size() - 1; i >= 0; i--) {
       if (scopes.get(i).variables.containsKey(name.lexeme())) {
@@ -276,6 +285,7 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
     scope.variables.put(name, new VarState(scope.id++));
   }
 
+  /** A name is taken */
   private void declare(Token name) {
     declare(name.lexeme(), name);
   }
@@ -291,9 +301,10 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
     });
   }
 
+  /** A name is assigned a value */
   private void define(Token name) {
     define(name.lexeme());
-    resolveLocal(name);
+    resolveLocal(name); // We also want to record the distance for assignment.
   }
 
   private void resolve(Stmt statement) {
@@ -305,24 +316,30 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
   }
 
   private void resolveFunction(Stmt.Function function) {
+    ScopeManager methodScope = null;
+    if (function.isMethod()) {
+      methodScope = scope(THIS);
+      define(Token.artificial(THIS));
+    }
+
     try(var s = scope(function)) {
       for (Token param : function.params()) {
-        declare(param);
         define(param);
       }
       resolve(function.body());
+    }
+    if (methodScope != null) {
+      methodScope.close();
     }
   }
 
   private void resolveFunction(Expr.Function function) {
     try(var s = scope(function)) {
       if (!function.isAnonymous()) {
-        declare(function.name());
         define(function.name());
       }
       try(var p = scope(function)) {
         for (Token param : function.arguments()) {
-          declare(param);
           define(param);
         }
         resolve(function.body());
@@ -330,8 +347,8 @@ class Resolver implements Expr.Visitor<Resolver.ResolutionReport>, Stmt.Visitor<
     }
   }
 
-  private ScopeManager scope() {
-    scopes.push(new State());
+  private ScopeManager scope(TokenType tokenType) {
+    scopes.push(new State(tokenType));
     return scopes::pop;
   }
 

@@ -35,7 +35,7 @@ public class LoxFunction implements LoxCallable {
 
   @Override
   public Object call(Interpreter interpreter, List<Object> arguments) {
-    var environment = scope.pushScope();
+    var environment = scope.pushScope("call:" + declaration.name());
     for (int i = 0; i < declaration.params().size(); i++) {
       environment.define(
               declaration.params().get(i),
@@ -70,7 +70,7 @@ public class LoxFunction implements LoxCallable {
   }
 
   public LoxFunction bind(LoxInstance loxInstance) {
-    var environment = scope.pushScope();
+    var environment = scope.pushScope("methodLookup:" + declaration.name());
     environment.define(Token.artificial(THIS), loxInstance);
     return new LoxFunction(declaration, environment, type);
   }

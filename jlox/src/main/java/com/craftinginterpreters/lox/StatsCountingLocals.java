@@ -31,6 +31,12 @@ final class StatsCountingLocals extends HashMap<Token, Resolver.Coordinates> {
   @Override
   public Resolver.Coordinates put(Token key, Resolver.Coordinates value) {
     writes++;
+    if (containsKey(key) && !get(key).equals(value)) {
+      throw new IllegalArgumentException(
+                  "Duplicate key: " + key +
+                  " existing value: " + get(key) +
+                  " new value: " + value);
+    }
     return super.put(key, value);
   }
 

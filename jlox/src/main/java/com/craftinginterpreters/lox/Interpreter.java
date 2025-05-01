@@ -65,7 +65,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     environment.define(classDeclaration.name(), null);
     var env = environment;
     if (superclass != null) {
-      env = env.pushScope();
+      env = env.pushScope("super for " + classDeclaration.name());
       env.define(Token.artificial(SUPER), superclass);
     }
 
@@ -142,7 +142,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
   @Override
   public Void visit(Stmt.Block block) {
-    executeBlock(block.statements(), environment.pushScope());
+    executeBlock(block.statements(), environment.pushScope(block));
     return null;
   }
 
@@ -287,13 +287,13 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
       instance.set(update.field(), value);
       return value;
     }
-    throw new EvaluationError(update.field(), "Only instances have fields");
+    throw new EvaluationError(update.field(), "Only instances have fields. Attempting to set " + update.field() + " on " + target);
   }
 
   @Override
   public Object visit(Expr.Function f) {
     var fun = new Stmt.Function(f.name(), f.arguments(), f.body());
-    var env = environment.pushScope();
+    var env = environment.pushScope("FunctionExprScope @ " + f.keyword());
     var func = new LoxFunction(fun, env);
     if (!f.isAnonymous()) {
       env.define(f.name(), func);

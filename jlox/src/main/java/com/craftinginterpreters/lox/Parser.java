@@ -73,7 +73,7 @@ class Parser {
   }
 
   private Stmt.Function callable(String callableType, EnumSetQueue<StatementContext> context) {
-    boolean isMethod = context.containsAtHead(StatementContext.IN_CLASS_DECLARATION);
+    var isMethod = context.containsAtHead(StatementContext.IN_CLASS_DECLARATION);
     var name = consume(IDENTIFIER, "Expected " + callableType + " name");
     var parameters = new ArrayList<Token>();
     // Methods are not required to have parentheses for getters
@@ -94,14 +94,20 @@ class Parser {
 
     consume(LEFT_BRACE, "Expect '{' before " + callableType + " body.");
 
-    if (context.containsAtHead(StatementContext.IN_CLASS_DECLARATION) && name.lexeme().equals(INIT)) {
+    if (isMethod && name.lexeme().equals(INIT)) {
       context = EnumSetQueue.push(context, StatementContext.IN_FUNCTION, StatementContext.IN_INIT);
     } else {
       context = EnumSetQueue.push(context, StatementContext.IN_FUNCTION);
     }
 
     var body = block(context);
-    return new Stmt.Function(name, parameters, body, isGetter);
+    var functionType = isGetter
+            ? Stmt.Function.Type.GETTER
+            : context.containsAtHead(StatementContext.IN_INIT)
+              ? Stmt.Function.Type.INITIALIZER
+              : isMethod
+                ? Stmt.Function.Type.METHOD : Stmt.Function.Type.NONE;
+    return new Stmt.Function(name, parameters, body, functionType);
   }
 
   private Stmt varDeclaration(EnumSetQueue<StatementContext> context) {
@@ -305,12 +311,16 @@ class Parser {
   private Expr or(EnumSetQueue<ExpressionContext> context) {
     // If we had more of these it might make sense to duplicate the method or copy and paste the impl
     var e = binaryOp(this::and, context, OR);
-    return e instanceof Expr.Binary b && b.operator().type().equals(OR) ? new Expr.Logical(b.left(), b.operator(), b.right()) : e;
+    return e instanceof Expr.Binary(
+            Expr left, Token operator, Expr right
+    ) && operator.type().equals(OR) ? new Expr.Logical(left, operator, right) : e;
   }
 
   private Expr and(EnumSetQueue<ExpressionContext> context) {
     var e = binaryOp(this::discardedExpression, context, AND);
-    return e instanceof Expr.Binary b && b.operator().type().equals(AND) ? new Expr.Logical(b.left(), b.operator(), b.right()) : e;
+    return e instanceof Expr.Binary(
+            Expr left, Token operator, Expr right
+    ) && operator.type().equals(AND) ? new Expr.Logical(left, operator, right) : e;
   }
 
   private Expr discardedExpression(EnumSetQueue<ExpressionContext> context) {

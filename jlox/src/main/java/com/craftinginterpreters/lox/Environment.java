@@ -2,7 +2,7 @@ package com.craftinginterpreters.lox;
 
 abstract class Environment {
   /** Construct a new environment with this one as the enclosing one */
-  abstract Environment pushScope();
+  abstract Environment pushScope(Object identifier);
 
   /** Lookup a token in the environment in an optimizable way */
   abstract Object get(Token name);

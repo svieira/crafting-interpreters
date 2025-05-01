@@ -11,6 +11,7 @@ final class EnvironmentOptimized extends Environment {
   private final EnvironmentOptimized top;
   private final Environment global;
   private final Stats stats;
+  private final Object identifier;
 
   EnvironmentOptimized(Map<Token, Resolver.Coordinates> locals) {
     enclosing = null;
@@ -18,19 +19,21 @@ final class EnvironmentOptimized extends Environment {
     top = this;
     stats = new Stats();
     this.locals = locals;
+    identifier = "TOP";
   }
 
-  EnvironmentOptimized(EnvironmentOptimized enclosing) {
+  EnvironmentOptimized(EnvironmentOptimized enclosing, Object identifier) {
     this.enclosing = enclosing;
     this.top = enclosing.top;
     this.stats = enclosing.top.stats;
     this.locals = null;
     global = null;
+    this.identifier = identifier;
   }
 
   @Override
-  Environment pushScope() {
-    return new EnvironmentOptimized(this);
+  Environment pushScope(Object identifier) {
+    return new EnvironmentOptimized(this, identifier);
   }
 
   public Object get(Token name) {
@@ -40,13 +43,16 @@ final class EnvironmentOptimized extends Environment {
     }
     var scope = ancestor(distance.scope());
     stats.byCoordinateLookups++;
+    if (scope == null || scope.values.size() <= distance.id()) {
+      throw new EvaluationError(name, "Unable to lookup variable:\n\t'" + name + "'\nin scope:\n'" + this + "'" + "\n\tat distance " + distance);
+    }
     return scope.values.get(distance.id());
   }
 
   public Environment getEnvironmentOf(Token name) {
     var distance = top.locals.get(name);
     if (distance == null) {
-      throw new EvaluationError(name, "Unable to resolve for lookup of environment due to earlier miss");
+      throw new EvaluationError(name, "Unable to resolve for lookup of environment for '" + name + "' due to earlier miss");
     }
     var env = ancestor(distance.scope());
     if (env != null) return env;
@@ -56,7 +62,15 @@ final class EnvironmentOptimized extends Environment {
   }
 
   void define(Token name, Object value) {
-    assign(name, value);
+    var distance = top.locals.get(name);
+    if (distance == null) {
+      //values.add(value);
+      throw new EvaluationError("Unable to find scope for '" + name + "'.");
+    } else {
+      var scope = ancestor(distance.scope());
+      stats.byCoordinateLookups++;
+      scope.values.add(distance.id(), value);
+    }
   }
 
   void define(String name, Object value) {
@@ -66,7 +80,7 @@ final class EnvironmentOptimized extends Environment {
   public void assign(Token name, Object value) {
     var distance = top.locals.get(name);
     if (distance == null) {
-      throw new EvaluationError(name, "Unable to resolve for assignment due to earlier miss");
+      throw new EvaluationError(name, "Unable to resolve '" + name + "' for assignment due to earlier miss");
     }
     var ancestor = ancestor(distance.scope());
     if (ancestor == null) {
@@ -74,7 +88,7 @@ final class EnvironmentOptimized extends Environment {
               "Cannot assign to undefined variable '" + name.lexeme() + "'");
     }
     stats.byCoordinateAssignments++;
-    ancestor.values.add(distance.id(), value);
+    ancestor.values.set(distance.id(), value);
   }
 
   @Override
@@ -95,19 +109,29 @@ final class EnvironmentOptimized extends Environment {
     System.out.println(stats.asString());
   }
 
+  @Override
+  public String toString() {
+    return toSelfString() + (enclosing != null ? enclosing.toString(1) : "");
+  }
+
+  private String toSelfString() {
+    return hashCode() + ":" + identifier + "@" + values;
+  }
+
+  private String toString(int depth) {
+    return '\n' + "\t".repeat(depth) + toSelfString() + (enclosing != null ? enclosing.toString(depth + 1) : "");
+  }
 
   private final static class Stats {
     private int byCoordinateAssignments = 0;
     private int byCoordinateLookups = 0;
-    private int byCoordinateMisses = 0;
 
     private String asString() {
       return String.format("""
       By coordinates:
         Assignments: %d
         Lookups: %d
-        Misses: %d
-      """, byCoordinateAssignments, byCoordinateLookups, byCoordinateMisses);
+      """, byCoordinateAssignments, byCoordinateLookups);
     }
   }
 }
