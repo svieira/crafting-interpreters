@@ -1,7 +1,7 @@
 #!/opt/homebrew/bin/bash
 
 # Preserve STDOUT via HACK
-./gradlew jar &
+./gradlew --configuration-cache jar &
 wait
 
 if [[ -t 0 && $# == 0 ]]; then
